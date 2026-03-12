@@ -1,0 +1,222 @@
+---
+title: "team_points.py"
+description: "Fetch Formula 1 constructor championship standings"
+---
+
+# team_points.py
+
+The `team_points.py` script fetches constructor (team) championship standings after each race. It tracks points accumulated by F1 constructors throughout the season.
+
+## Overview
+
+This script uses the `ConstructorStandingsFetcher` class to:
+- Fetch constructor standings from the Ergast API
+- Save cumulative team points after each round
+- Implement comprehensive rate limiting (burst and sustained)
+- Handle API errors gracefully
+
+## ConstructorStandingsFetcher Class
+
+### Initialization
+
+```python team_points.py
+class ConstructorStandingsFetcher:
+    def __init__(self, base_dir="data"):
+        self.base_dir = Path(base_dir)
+        self.requests_this_hour = 0
+        self.hour_start_time = time.time()
+```
+
+**Attributes:**
+- `base_dir`: Root directory for data storage
+- `requests_this_hour`: Counter for hourly rate limit tracking
+- `hour_start_time`: Timestamp for hourly window
+
+### Rate Limiting Methods
+
+#### reset_hour_counter_if_needed()
+
+```python team_points.py
+def reset_hour_counter_if_needed(self):
+    """Reset the hourly request counter if an hour has passed"""
+    current_time = time.time()
+    if current_time - self.hour_start_time > 3600:  # 3600 seconds = 1 hour
+        self.requests_this_hour = 0
+        self.hour_start_time = current_time
+        logger.info("Hourly request counter reset")
+```
+
+#### check_rate_limits()
+
+```python team_points.py
+def check_rate_limits(self):
+    """Check if we're within rate limits, wait if necessary"""
+    self.reset_hour_counter_if_needed()
+    
+    # Check sustained (hourly) limit
+    if self.requests_this_hour >= SUSTAINED_LIMIT:
+        wait_time = 1800 - (time.time() - self.hour_start_time)
+        if wait_time > 0:
+            logger.warning(f"Hourly rate limit reached. Waiting {wait_time:.2f} seconds")
+            time.sleep(wait_time)
+            self.requests_this_hour = 0
+            self.hour_start_time = time.time()
+    
+    # Always wait between requests to respect burst limit
+    time.sleep(REQUEST_DELAY)
+```
+
+### Data Fetching Methods
+
+#### get_race_info()
+
+```python team_points.py
+def get_race_info(self, season, round_num):
+    """Get race information for a specific season and round"""
+    url = f"{BASE_URL}/{season}/{round_num}.json"
+    data = self.make_request(url)
+    
+    if not data:
+        return None
+    
+    races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+    if races:
+        return races[0]
+    return None
+```
+
+#### get_constructor_standings()
+
+```python team_points.py
+def get_constructor_standings(self, season, round_num):
+    """Get constructor standings for a specific season and round"""
+    url = f"{BASE_URL}/{season}/{round_num}/constructorstandings.json"
+    return self.make_request(url)
+```
+
+#### fetch_standings_by_round()
+
+```python team_points.py
+def fetch_standings_by_round(self, season, round_num):
+    """Fetch constructor standings for a specific season and round"""
+    logger.info(f"Fetching constructor standings for season {season}, round {round_num}")
+    
+    # Get race information
+    race_info = self.get_race_info(season, round_num)
+    
+    if not race_info:
+        logger.warning(f"No race found for season {season}, round {round_num}")
+        return
+    
+    race_name = race_info.get("raceName", "").lower().replace(" ", "-")
+    
+    # Create directories
+    season_dir = self.base_dir / str(season)
+    race_dir = season_dir / f"{race_name}"
+    os.makedirs(race_dir, exist_ok=True)
+    
+    # Get constructor standings for this round
+    standings = self.get_constructor_standings(season, round_num)
+    
+    if standings:
+        standings_path = race_dir / "teamPoints.json"
+        self.save_json(standings, standings_path)
+        logger.info(f"Successfully saved constructor standings for {season} {race_name} (Round {round_num})")
+    else:
+        logger.warning(f"No constructor standings found for {season}, round {round_num}")
+```
+
+## Usage
+
+### Basic Usage
+
+```python
+from team_points import ConstructorStandingsFetcher
+
+fetcher = ConstructorStandingsFetcher(base_dir=".")
+
+# Fetch constructor standings after Round 1 of 2024
+fetcher.fetch_standings_by_round(2024, 1)
+```
+
+### Fetch Multiple Rounds
+
+```python
+fetcher = ConstructorStandingsFetcher()
+
+for round_num in range(1, 25):
+    fetcher.fetch_standings_by_round(2024, round_num)
+```
+
+## API Endpoint
+
+```
+GET https://api.jolpi.ca/ergast/f1/{season}/{round}/constructorstandings.json
+```
+
+## Output Structure
+
+Constructor standings are saved to: `{year}/{race-slug}/teamPoints.json`
+
+```json
+{
+  "MRData": {
+    "StandingsTable": {
+      "season": "2024",
+      "round": "1",
+      "StandingsLists": [
+        {
+          "season": "2024",
+          "round": "1",
+          "ConstructorStandings": [
+            {
+              "position": "1",
+              "points": "44",
+              "wins": "1",
+              "Constructor": {
+                "constructorId": "red_bull",
+                "url": "http://en.wikipedia.org/wiki/Red_Bull_Racing",
+                "name": "Red Bull",
+                "nationality": "Austrian"
+              }
+            },
+            {
+              "position": "2",
+              "points": "27",
+              "wins": "0",
+              "Constructor": {
+                "constructorId": "ferrari",
+                "name": "Ferrari",
+                "nationality": "Italian"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+<Note>
+  Constructor championship data is available from 1958 onwards. The 1950-1957 seasons do not have constructor standings.
+</Note>
+
+## Configuration
+
+```python
+BASE_URL = "https://api.jolpi.ca/ergast/f1"
+BURST_LIMIT = 2  # requests per second
+SUSTAINED_LIMIT = 500  # requests per hour
+REQUEST_DELAY = 1 / BURST_LIMIT  # seconds between requests
+```
+
+## Logging
+
+Log file: `constructor_standings_fetcher.log`
+
+## See Also
+
+- [Standings Data Collection](/data-collection/standings)
+- [Driver Points Script](/api/driver-points)
+- [Rate Limiting](/api/rate-limiting)

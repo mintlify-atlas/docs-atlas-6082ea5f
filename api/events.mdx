@@ -1,0 +1,243 @@
+---
+title: "events.py"
+description: "Fetch Formula 1 race calendars and create directory structure"
+---
+
+# events.py
+
+The `events.py` script is responsible for fetching the Formula 1 race calendar for a specified season and creating the initial directory structure for storing race data. This is typically the first script to run when collecting data for a new season.
+
+## Overview
+
+This script:
+- Fetches the complete race calendar from the Ergast API
+- Creates year and race directories
+- Saves season-level event data to `events.json`
+- Saves individual race information to `event_info.json` in each race folder
+- Uses rate limiting to respect API constraints
+
+## Functions
+
+### slugify()
+
+Converts race names to URL-friendly slugs for directory naming.
+
+```python events.py
+def slugify(race_name):
+    # Convert to lowercase and replace spaces with hyphens
+    slug = race_name.lower().replace(" ", "-")
+    return slug
+```
+
+**Parameters:**
+- `race_name` (str): The official race name (e.g., "Belgian Grand Prix")
+
+**Returns:**
+- `str`: URL-friendly slug (e.g., "belgian-grand-prix")
+
+**Example:**
+```python
+slugify("British Grand Prix")  # Returns: "british-grand-prix"
+slugify("São Paulo Grand Prix")  # Returns: "são-paulo-grand-prix"
+```
+
+### create_directory()
+
+Creates a directory if it doesn't already exist.
+
+```python events.py
+def create_directory(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+        print(f"Created directory: {path}")
+```
+
+**Parameters:**
+- `path` (str): Directory path to create
+
+### fetch_with_rate_limit()
+
+Fetches data from a URL with built-in rate limiting and retry logic.
+
+```python events.py
+def fetch_with_rate_limit(url):
+    # Respect rate limits: 4 requests per second, 500 requests per hour
+    time.sleep(0.3)  # Wait 0.3 seconds between requests
+    
+    response = requests.get(url)
+    
+    # Handle rate limiting
+    if response.status_code == 429:
+        print("Rate limit exceeded. Waiting 60 seconds before retrying...")
+        time.sleep(60)
+        return fetch_with_rate_limit(url)
+    
+    return response.json()
+```
+
+**Parameters:**
+- `url` (str): API endpoint URL
+
+**Returns:**
+- `dict`: Parsed JSON response
+
+<Note>
+  The function implements a 0.3 second delay between requests to stay within the Ergast API's 4 requests per second limit.
+</Note>
+
+### main()
+
+Main execution function that orchestrates the data collection process.
+
+```python events.py
+def main():
+    base_dir = "."
+    start_year = 2026
+    end_year = 2026
+    
+    for year in range(start_year, end_year + 1):
+        print(f"Processing year {year}...")
+        
+        # Create year directory
+        year_dir = os.path.join(base_dir, str(year))
+        create_directory(year_dir)
+        
+        # Fetch races for the year
+        url = f"https://api.jolpi.ca/ergast/f1/{year}/races/"
+        data = fetch_with_rate_limit(url)
+        
+        # Save year data to events.json
+        with open(os.path.join(year_dir, f"events.json"), "w") as f:
+            json.dump(data, f, indent=2)
+        
+        # Process each race
+        if ("MRData" in data and 
+            "RaceTable" in data["MRData"] and 
+            "Races" in data["MRData"]["RaceTable"]):
+            races = data["MRData"]["RaceTable"]["Races"]
+            
+            for race in races:
+                race_name = race["raceName"]
+                race_slug = slugify(race_name)
+                
+                # Create race directory
+                race_dir = os.path.join(year_dir, f"{race_slug}")
+                create_directory(race_dir)
+                
+                # Save race data to event_info.json
+                with open(os.path.join(race_dir, "event_info.json"), "w") as f:
+                    json.dump(race, f, indent=2)
+                
+                print(f"Processed: {year} - {race_name}")
+```
+
+## Usage
+
+### Fetch a Single Season
+
+```python
+# Edit the script to set the desired season
+start_year = 2024
+end_year = 2024
+
+# Run the script
+python events.py
+```
+
+### Fetch Multiple Seasons
+
+```python
+# Fetch data for seasons 2020-2024
+start_year = 2020
+end_year = 2024
+
+python events.py
+```
+
+## API Endpoint
+
+The script calls the following Ergast API endpoint:
+
+```
+GET https://api.jolpi.ca/ergast/f1/{year}/races/
+```
+
+**Response Structure:**
+```json
+{
+  "MRData": {
+    "series": "f1",
+    "RaceTable": {
+      "season": "2024",
+      "Races": [
+        {
+          "season": "2024",
+          "round": "1",
+          "raceName": "Bahrain Grand Prix",
+          "Circuit": { ... },
+          "date": "2024-03-02",
+          "time": "15:00:00Z"
+        }
+      ]
+    }
+  }
+}
+```
+
+## Output Files
+
+### events.json (Season Level)
+
+Stored in: `{year}/events.json`
+
+Contains the complete race calendar for the season.
+
+### event_info.json (Race Level)
+
+Stored in: `{year}/{race-slug}/event_info.json`
+
+Contains detailed information for a specific race including:
+- Circuit details
+- Race date and time
+- Session schedule (practice, qualifying, race)
+- Wikipedia reference URL
+
+## Configuration
+
+The script can be configured by editing these variables:
+
+```python
+# Directory for data storage
+base_dir = "."
+
+# Season range to fetch
+start_year = 2026
+end_year = 2026
+
+# Rate limiting delay (seconds)
+time.sleep(0.3)  # 0.3 seconds = ~3.3 req/sec
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Run First" icon="1">
+    Always run `events.py` before other data collection scripts to create the directory structure
+  </Card>
+  <Card title="Respect Rate Limits" icon="gauge-high">
+    Don't reduce the sleep delay below 0.25 seconds to avoid hitting rate limits
+  </Card>
+  <Card title="Check API Status" icon="signal">
+    Verify the Ergast API is accessible before fetching large date ranges
+  </Card>
+  <Card title="Incremental Updates" icon="plus">
+    For current seasons, run periodically to fetch newly added races
+  </Card>
+</CardGroup>
+
+## See Also
+
+- [Data Collection Overview](/data-collection/overview)
+- [Events Data Collection](/data-collection/events)
+- [Rate Limiting](/api/rate-limiting)
+- [Data Fetching Patterns](/api/data-fetching)

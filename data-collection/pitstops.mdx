@@ -1,0 +1,361 @@
+---
+title: Pit Stops
+description: Collecting pit stop data using pitstops.py
+---
+
+The `pitstops.py` script fetches detailed pit stop information including lap number, stop duration, and timing for each driver's pit stops.
+
+<Warning>
+Pit stop data is only available from the 2011 season onwards. The script automatically skips seasons before 2011.
+</Warning>
+
+## Script Overview
+
+Location: `~/workspace/source/pitstops.py`
+
+The `PitstopsFetcher` class:
+1. Fetches pit stop data with pagination
+2. Validates that the season is 2011 or later
+3. Combines paginated results into a single file
+4. Handles races with no pit stops (e.g., safety car finishes)
+
+## API Endpoint with Pagination
+
+```python
+url = f"https://api.jolpi.ca/ergast/f1/{season}/{round_num}/pitstops.json?limit={limit}&offset={offset}"
+```
+
+## PitstopsFetcher Class
+
+### Initialization
+
+```python
+class PitstopsFetcher:
+    def __init__(self, base_dir=".", season=None, round_num=None):
+        """
+        Initialize the PitstopsFetcher for a specific season and round.
+
+        Args:
+            base_dir: Base directory where race data is stored
+            season: Season year to fetch pitstops for
+            round_num: Round number to fetch pitstops for
+        """
+        self.base_dir = Path(base_dir)
+        self.season = season
+        self.round_num = round_num
+        self.base_url = "https://api.jolpi.ca/ergast/f1"
+
+        # Rate limiting parameters
+        self.burst_limit = 4  # 4 requests per second
+        self.last_request_time = 0
+```
+
+### Fetch Pitstops with Pagination
+
+```python
+def fetch_pitstops_for_race(self):
+    """
+    Fetch all pitstops for the specified race using pagination
+
+    Returns:
+        Complete pitstops data for the race
+    """
+    limit = 100  # Maximum number of results per request
+    offset = 0
+    all_pitstops = []
+    total_pitstops = None
+
+    # Initial request
+    url = f"{self.base_url}/{self.season}/{self.round_num}/pitstops.json?limit={limit}&offset={offset}"
+    response_data = self.make_request(url)
+
+    if not response_data:
+        logger.error(
+            f"Failed to fetch pitstops for {self.season} round {self.round_num}"
+        )
+        return None
+
+    # Extract data from the response
+    race_data = response_data["MRData"]
+    total_pitstops = int(race_data["total"])
+
+    # If there are no pitstops, return the empty response
+    if total_pitstops == 0:
+        logger.info(f"No pitstops found for {self.season} round {self.round_num}")
+        return response_data
+
+    # Add the first batch of pitstops
+    if (
+        "RaceTable" in race_data
+        and "Races" in race_data["RaceTable"]
+        and len(race_data["RaceTable"]["Races"]) > 0
+    ):
+        race = race_data["RaceTable"]["Races"][0]
+        if "PitStops" in race:
+            all_pitstops.extend(race["PitStops"])
+
+    # Fetch remaining pitstops if needed
+    while len(all_pitstops) < total_pitstops:
+        offset += limit
+        url = f"{self.base_url}/{self.season}/{self.round_num}/pitstops.json?limit={limit}&offset={offset}"
+        response_data = self.make_request(url)
+
+        if not response_data:
+            logger.error(
+                f"Failed to fetch pitstops at offset {offset} for {self.season} round {self.round_num}"
+            )
+            break
+
+        race_data = response_data["MRData"]
+        if (
+            "RaceTable" in race_data
+            and "Races" in race_data["RaceTable"]
+            and len(race_data["RaceTable"]["Races"]) > 0
+        ):
+            race = race_data["RaceTable"]["Races"][0]
+            if "PitStops" in race:
+                all_pitstops.extend(race["PitStops"])
+
+    # Reconstruct the complete response with all pitstops
+    if (
+        len(all_pitstops) > 0
+        and "RaceTable" in response_data["MRData"]
+        and "Races" in response_data["MRData"]["RaceTable"]
+        and len(response_data["MRData"]["RaceTable"]["Races"]) > 0
+    ):
+        response_data["MRData"]["RaceTable"]["Races"][0]["PitStops"] = all_pitstops
+
+    logger.info(
+        f"Fetched {len(all_pitstops)} pitstops for {self.season} round {self.round_num}"
+    )
+    return response_data
+```
+
+### Run Method with Season Validation
+
+```python
+def run(self):
+    """Run the pitstops fetcher for the specified season and round"""
+    # Skip if season is before 2011 as pitstops data starts from 2011
+    if self.season < 2011:
+        logger.info(
+            f"Skipping season {self.season} - pitstops data starts from 2011"
+        )
+        return
+
+    race_info = self.get_race_info()
+    if not race_info:
+        logger.error(
+            f"Could not find race information for {self.season} round {self.round_num}"
+        )
+        return
+
+    race_name = race_info["raceName"]
+    race_folder_name = self.get_race_folder_name(race_info)
+    race_folder = self.base_dir / str(self.season) / race_folder_name
+
+    # Create race folder if it doesn't exist
+    if not race_folder.exists():
+        logger.warning(f"Race folder {race_folder} does not exist, creating it")
+        race_folder.mkdir(parents=True, exist_ok=True)
+
+    pitstops_file = race_folder / "pitstops.json"
+
+    logger.info(
+        f"Fetching pitstops for {self.season} {race_name} (Round {self.round_num})"
+    )
+    pitstops_data = self.fetch_pitstops_for_race()
+
+    if pitstops_data:
+        with open(pitstops_file, "w") as f:
+            json.dump(pitstops_data, f, indent=2)
+        logger.info(f"Saved pitstops data to {pitstops_file}")
+    else:
+        logger.error(f"Failed to fetch pitstops for {self.season} {race_name}")
+```
+
+## Output Structure
+
+Stored at: `{year}/{race-name}/pitstops.json`
+
+```json
+{
+  "MRData": {
+    "series": "f1",
+    "url": "https://api.jolpi.ca/ergast/f1/2011/1/pitstops.json",
+    "limit": "100",
+    "offset": "0",
+    "total": "45",
+    "RaceTable": {
+      "season": "2011",
+      "round": "1",
+      "Races": [
+        {
+          "season": "2011",
+          "round": "1",
+          "raceName": "Australian Grand Prix",
+          "Circuit": {
+            "circuitId": "albert_park",
+            "circuitName": "Albert Park Grand Prix Circuit",
+            "Location": {
+              "lat": "-37.8497",
+              "long": "144.968",
+              "locality": "Melbourne",
+              "country": "Australia"
+            }
+          },
+          "date": "2011-03-27",
+          "time": "06:00:00Z",
+          "PitStops": [
+            {
+              "driverId": "alguersuari",
+              "lap": "1",
+              "stop": "1",
+              "time": "17:05:23",
+              "duration": "26.898"
+            },
+            {
+              "driverId": "michael_schumacher",
+              "lap": "1",
+              "stop": "1",
+              "time": "17:05:52",
+              "duration": "25.021"
+            },
+            {
+              "driverId": "webber",
+              "lap": "11",
+              "stop": "1",
+              "time": "17:20:48",
+              "duration": "23.426"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Pit Stop Data Fields
+
+| Field | Description |
+|-------|-------------|
+| `driverId` | Driver identifier |
+| `lap` | Lap number when pit stop occurred |
+| `stop` | Pit stop number for this driver (1st, 2nd, 3rd, etc.) |
+| `time` | Time of day when stop occurred (HH:MM:SS) |
+| `duration` | Duration of pit stop in seconds |
+
+<Note>
+The `duration` field is particularly useful for analyzing pit crew performance and comparing stop times.
+</Note>
+
+## Usage Example
+
+### Single Race
+
+```python
+from pitstops import PitstopsFetcher
+
+fetcher = PitstopsFetcher(base_dir=".", season=2024, round_num=1)
+fetcher.run()
+```
+
+### Multiple Races
+
+```python
+for round_num in range(1, 23):
+    fetcher = PitstopsFetcher(base_dir=".", season=2024, round_num=round_num)
+    fetcher.run()
+```
+
+### With Season Validation
+
+```python
+# This will be skipped automatically
+fetcher = PitstopsFetcher(base_dir=".", season=2010, round_num=1)
+fetcher.run()  # Logs: "Skipping season 2010 - pitstops data starts from 2011"
+
+# This will fetch data
+fetcher = PitstopsFetcher(base_dir=".", season=2011, round_num=1)
+fetcher.run()  # Fetches pitstops data
+```
+
+## Pagination Example
+
+For a typical race:
+- 20 drivers × 2-3 stops each = 40-60 pit stops
+- Usually fits in a single 100-record request
+- High-strategy races may require multiple requests
+
+## Race Strategy Analysis
+
+Pit stop data enables various analyses:
+
+### Pit Stop Statistics
+
+```python
+import json
+
+with open("2024/bahrain-grand-prix/pitstops.json") as f:
+    data = json.load(f)
+
+pitstops = data["MRData"]["RaceTable"]["Races"][0]["PitStops"]
+
+# Find fastest pit stop
+fastest = min(pitstops, key=lambda x: float(x["duration"]))
+print(f"Fastest stop: {fastest['driverId']} - {fastest['duration']}s")
+
+# Average stop duration
+avg_duration = sum(float(p["duration"]) for p in pitstops) / len(pitstops)
+print(f"Average stop duration: {avg_duration:.3f}s")
+```
+
+### Strategy Comparison
+
+```python
+# Count stops per driver
+from collections import defaultdict
+
+driver_stops = defaultdict(int)
+for stop in pitstops:
+    driver_stops[stop["driverId"]] += 1
+
+for driver, count in sorted(driver_stops.items(), key=lambda x: x[1]):
+    print(f"{driver}: {count} stops")
+```
+
+## Data Availability Timeline
+
+| Season Range | Availability |
+|--------------|-------------|
+| 1950-2010 | No pit stop data |
+| 2011-present | Complete pit stop data |
+
+<Warning>
+Attempting to fetch pit stop data for seasons before 2011 will return empty results. The script automatically detects and skips these seasons.
+</Warning>
+
+## Logging
+
+```python
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+```
+
+## Related Scripts
+
+<CardGroup cols={2}>
+  <Card title="Lap Times" icon="clock" href="/data-collection/lap-times">
+    Compare with lap timing data
+  </Card>
+  <Card title="Race Results" icon="flag-checkered" href="/data-collection/race-results">
+    Analyze how pit strategy affected results
+  </Card>
+  <Card title="Sprint Races" icon="gauge-high" href="/data-collection/sprint-races">
+    Fetch sprint race data (2021+)
+  </Card>
+</CardGroup>

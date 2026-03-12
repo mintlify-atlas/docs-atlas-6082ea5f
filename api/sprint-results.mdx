@@ -1,0 +1,267 @@
+---
+title: "sprint_results.py"
+description: "Fetch Formula 1 sprint race results"
+---
+
+# sprint_results.py
+
+The `sprint_results.py` script fetches results from Formula 1 sprint races. Sprint races are shorter format races introduced in 2021 that determine part of the starting grid for the main Grand Prix.
+
+## Overview
+
+This script uses the `SprintResultsFetcher` class to:
+- Fetch sprint race results from the Ergast API
+- Check if a race weekend includes a sprint
+- Save sprint results to structured JSON files
+- Handle races that don't have sprints gracefully
+
+<Note>
+  Sprint races were introduced in 2021. Only select races each season feature sprint formats.
+</Note>
+
+## SprintResultsFetcher Class
+
+### Initialization
+
+```python sprint_results.py
+class SprintResultsFetcher:
+    def __init__(self, base_dir="."):
+        self.base_dir = Path(base_dir)
+        self.base_url = "https://api.jolpi.ca/ergast/f1"
+        # Rate limits
+        self.burst_limit = 4  # requests per second
+        self.last_request_time = 0
+```
+
+### Key Methods
+
+#### has_sprint()
+
+Checks if a race has a sprint event.
+
+```python sprint_results.py
+def has_sprint(self, race):
+    """Check if a race has a sprint event"""
+    return "Sprint" in race
+```
+
+**Parameters:**
+- `race` (dict): Race information object
+
+**Returns:**
+- `bool`: `True` if race has a sprint, `False` otherwise
+
+#### get_sprint_results()
+
+Fetches sprint results from the API.
+
+```python sprint_results.py
+def get_sprint_results(self, season, round_num):
+    """Get sprint results for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}/sprint.json"
+    return self.make_request(url)
+```
+
+**Parameters:**
+- `season` (int): F1 season year
+- `round_num` (int): Round number
+
+**Returns:**
+- `dict`: Sprint results data or `None`
+
+#### fetch_sprint_for_round()
+
+Main method to fetch and save sprint results.
+
+```python sprint_results.py
+def fetch_sprint_for_round(self, season, round_num):
+    """Fetch sprint results for a specific season and round"""
+    logger.info(f"Fetching sprint results for season {season}, round {round_num}")
+    
+    # Create season directory
+    season_dir = self.base_dir / str(season)
+    os.makedirs(season_dir, exist_ok=True)
+    
+    # Get race information
+    race = self.get_race_info(season, round_num)
+    
+    if not race:
+        logger.warning(f"Race information not found for season {season}, round {round_num}")
+        return False
+    
+    race_name = self.get_race_folder_name(race)
+    
+    # Check if race has a sprint
+    if not self.has_sprint(race):
+        logger.warning(f"No sprint for {race_name} (Round {round_num}) in season {season}")
+        return False
+    
+    logger.info(f"Found sprint race: {race_name} (Round {round_num})")
+    
+    # Create race directory
+    race_dir = season_dir / race_name
+    os.makedirs(race_dir, exist_ok=True)
+    
+    # Get sprint results
+    sprint_results = self.get_sprint_results(season, round_num)
+    
+    if sprint_results:
+        sprint_results_path = race_dir / "sprint_results.json"
+        return self.save_json(sprint_results, sprint_results_path)
+    else:
+        logger.warning(f"No sprint results found for {race_name} (Round {round_num}) in season {season}")
+        return False
+```
+
+**Parameters:**
+- `season` (int): F1 season year
+- `round_num` (int): Round number
+
+**Returns:**
+- `bool`: `True` if sprint results were successfully saved, `False` otherwise
+
+## Usage
+
+### Basic Usage
+
+```python
+from sprint_results import SprintResultsFetcher
+
+fetcher = SprintResultsFetcher(base_dir=".")
+
+# Fetch sprint results for 2024 China (if it has a sprint)
+fetcher.fetch_sprint_for_round(2024, 5)
+
+# Fetch sprint results for 2024 Miami
+fetcher.fetch_sprint_for_round(2024, 6)
+```
+
+### Fetch All Sprints in a Season
+
+```python
+fetcher = SprintResultsFetcher()
+
+# Try all rounds - will skip races without sprints
+for round_num in range(1, 25):
+    success = fetcher.fetch_sprint_for_round(2024, round_num)
+    if success:
+        print(f"Sprint found and saved for round {round_num}")
+```
+
+## API Endpoint
+
+```
+GET https://api.jolpi.ca/ergast/f1/{season}/{round}/sprint.json
+```
+
+**Example:**
+```
+GET https://api.jolpi.ca/ergast/f1/2024/6/sprint.json
+```
+
+## Output Structure
+
+Sprint results are saved to: `{year}/{race-slug}/sprint_results.json`
+
+```json
+{
+  "MRData": {
+    "RaceTable": {
+      "season": "2024",
+      "round": "6",
+      "Races": [
+        {
+          "season": "2024",
+          "round": "6",
+          "raceName": "Miami Grand Prix",
+          "SprintResults": [
+            {
+              "number": "1",
+              "position": "1",
+              "points": "8",
+              "Driver": {
+                "driverId": "verstappen",
+                "code": "VER",
+                "givenName": "Max",
+                "familyName": "Verstappen"
+              },
+              "Constructor": {
+                "constructorId": "red_bull",
+                "name": "Red Bull"
+              },
+              "Time": {
+                "time": "27:14.567"
+              },
+              "status": "Finished"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Sprint Race Format
+
+Sprint races have evolved since their introduction:
+
+### Points Distribution
+
+**2021-2022 Format:**
+- P1: 3 points
+- P2: 2 points
+- P3: 1 point
+
+**2023-Present Format:**
+- P1: 8 points
+- P2: 7 points
+- P3: 6 points
+- P4: 5 points
+- P5: 4 points
+- P6: 3 points
+- P7: 2 points
+- P8: 1 point
+
+### Sprint Weekend Schedule
+
+1. **Friday**: Practice + Sprint Qualifying
+2. **Saturday**: Sprint Race + Main Qualifying
+3. **Sunday**: Grand Prix
+
+## Sprint Races by Season
+
+| Season | Number of Sprints | Notable Races |
+|--------|------------------|---------------|
+| 2021 | 3 | Silverstone, Monza, São Paulo |
+| 2022 | 3 | Imola, Red Bull Ring, São Paulo |
+| 2023 | 6 | Baku, Spielberg, Spa, Qatar, COTA, São Paulo |
+| 2024 | 6 | China, Miami, Red Bull Ring, COTA, São Paulo, Qatar |
+
+<Tip>
+  Check the official F1 calendar at the start of each season to see which races will feature sprint formats.
+</Tip>
+
+## Checking for Sprints
+
+The script automatically detects sprint races by checking the race object for a `Sprint` field:
+
+```python
+if "Sprint" in race:
+    # This race has a sprint
+    fetch_sprint_results()
+else:
+    # Regular race weekend
+    skip()
+```
+
+## Logging
+
+Log file: `sprint_results_fetch.log`
+
+## See Also
+
+- [Sprint Races Data Collection](/data-collection/sprint-races)
+- [Race Results](/api/results)
+- [Qualifying Results](/api/quali-results)
+- [JSON Schemas](/data-structure/json-schemas)

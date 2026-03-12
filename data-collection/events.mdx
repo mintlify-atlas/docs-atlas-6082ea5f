@@ -1,0 +1,220 @@
+---
+title: Events Collection
+description: Fetching Formula 1 race calendars using events.py
+---
+
+The `events.py` script is the foundation of the data collection pipeline. It fetches the race calendar for each season and creates the directory structure for storing race data.
+
+## Script Overview
+
+Location: `~/workspace/source/events.py`
+
+The events script:
+1. Fetches the race calendar for specified seasons
+2. Creates year and race directories
+3. Saves event metadata for each race
+4. Stores the complete season calendar
+
+## API Endpoint
+
+The script uses the Ergast API races endpoint:
+
+```python
+url = f"https://api.jolpi.ca/ergast/f1/{year}/races/"
+```
+
+## Key Functions
+
+### Race Name Slugification
+
+Converts race names to URL-friendly folder names:
+
+```python
+def slugify(race_name):
+    # Convert to lowercase and replace spaces with hyphens
+    slug = race_name.lower().replace(" ", "-")
+    return slug
+```
+
+**Example:**
+- "Belgian Grand Prix" → `belgian-grand-prix`
+- "Monaco Grand Prix" → `monaco-grand-prix`
+
+### Directory Creation
+
+```python
+def create_directory(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+        print(f"Created directory: {path}")
+```
+
+### Rate-Limited Fetching
+
+```python
+def fetch_with_rate_limit(url):
+    # Respect rate limits: 4 requests per second, 500 requests per hour
+    time.sleep(0.3)  # Wait 0.25 seconds between requests (4 req/sec)
+
+    response = requests.get(url)
+
+    # Handle rate limiting
+    if response.status_code == 429:
+        print("Rate limit exceeded. Waiting 60 seconds before retrying...")
+        time.sleep(60)
+        return fetch_with_rate_limit(url)
+
+    return response.json()
+```
+
+<Note>
+The script sleeps for 0.3 seconds between requests to stay within the 4 requests/second limit.
+</Note>
+
+## Main Process
+
+The main function iterates through seasons and processes each race:
+
+```python
+def main():
+    base_dir = "."
+    start_year = 2026
+    end_year = 2026
+
+    for year in range(start_year, end_year + 1):
+        print(f"Processing year {year}...")
+
+        # Create year directory
+        year_dir = os.path.join(base_dir, str(year))
+        create_directory(year_dir)
+
+        # Fetch races for the year
+        url = f"https://api.jolpi.ca/ergast/f1/{year}/races/"
+        data = fetch_with_rate_limit(url)
+
+        # Save year data to a JSON file in the year folder
+        with open(os.path.join(year_dir, f"events.json"), "w") as f:
+            json.dump(data, f, indent=2)
+
+        # Process each race
+        if (
+            "MRData" in data
+            and "RaceTable" in data["MRData"]
+            and "Races" in data["MRData"]["RaceTable"]
+        ):
+            races = data["MRData"]["RaceTable"]["Races"]
+
+            for race in races:
+                race_name = race["raceName"]
+                race_slug = slugify(race_name)
+
+                # Create race directory
+                race_dir = os.path.join(year_dir, f"{race_slug}")
+                create_directory(race_dir)
+
+                # Save race data to a JSON file
+                with open(os.path.join(race_dir, "event_info.json"), "w") as f:
+                    json.dump(race, f, indent=2)
+
+                print(f"Processed: {year} - {race_name}")
+```
+
+## Output Structure
+
+### events.json (Season Calendar)
+
+Stored at: `{year}/events.json`
+
+```json
+{
+  "MRData": {
+    "series": "f1",
+    "url": "https://api.jolpi.ca/ergast/f1/1950/races/",
+    "limit": "30",
+    "offset": "0",
+    "total": "7",
+    "RaceTable": {
+      "season": "1950",
+      "Races": [
+        {
+          "season": "1950",
+          "round": "1",
+          "url": "https://en.wikipedia.org/wiki/1950_British_Grand_Prix",
+          "raceName": "British Grand Prix",
+          "Circuit": {
+            "circuitId": "silverstone",
+            "url": "https://en.wikipedia.org/wiki/Silverstone_Circuit",
+            "circuitName": "Silverstone Circuit",
+            "Location": {
+              "lat": "52.0786",
+              "long": "-1.01694",
+              "locality": "Silverstone",
+              "country": "UK"
+            }
+          },
+          "date": "1950-05-13"
+        }
+      ]
+    }
+  }
+}
+```
+
+### event_info.json (Individual Race)
+
+Stored at: `{year}/{race-name}/event_info.json`
+
+```json
+{
+  "season": "1950",
+  "round": "1",
+  "url": "https://en.wikipedia.org/wiki/1950_British_Grand_Prix",
+  "raceName": "British Grand Prix",
+  "Circuit": {
+    "circuitId": "silverstone",
+    "url": "https://en.wikipedia.org/wiki/Silverstone_Circuit",
+    "circuitName": "Silverstone Circuit",
+    "Location": {
+      "lat": "52.0786",
+      "long": "-1.01694",
+      "locality": "Silverstone",
+      "country": "UK"
+    }
+  },
+  "date": "1950-05-13"
+}
+```
+
+## Usage Example
+
+To fetch events for multiple seasons:
+
+```python
+if __name__ == "__main__":
+    main()
+    print("Done! All races have been processed and folders created.")
+```
+
+Modify the year range in the `main()` function:
+
+```python
+start_year = 1950
+end_year = 2024
+```
+
+<Warning>
+Fetching data for all seasons (1950-2024) will make hundreds of API requests. Ensure you respect the rate limits to avoid being blocked.
+</Warning>
+
+## Next Steps
+
+After collecting events data, you can fetch:
+
+<CardGroup cols={2}>
+  <Card title="Race Results" icon="flag-checkered" href="/data-collection/race-results">
+    Fetch finishing positions and race outcomes
+  </Card>
+  <Card title="Qualifying" icon="stopwatch" href="/data-collection/qualifying">
+    Collect qualifying session results
+  </Card>
+</CardGroup>

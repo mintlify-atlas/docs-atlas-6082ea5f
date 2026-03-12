@@ -1,0 +1,260 @@
+---
+title: "laptimes.py"
+description: "Fetch Formula 1 lap-by-lap timing data"
+---
+
+# laptimes.py
+
+The `laptimes.py` script fetches complete lap-by-lap timing data for Formula 1 races. This includes every lap time for every driver in a race, which can result in large datasets requiring pagination.
+
+## Overview
+
+This script:
+- Fetches lap times from the Ergast API with pagination
+- Handles large datasets (races can have 800+ lap records)
+- Implements rate limiting and retry logic
+- Saves complete lap timing data to JSON files
+
+<Note>
+  Lap time data is available from 1996 onwards. Earlier seasons do not have lap timing information.
+</Note>
+
+## Functions
+
+### fetch_laptimes()
+
+Fetches all lap times for a race using pagination.
+
+```python laptimes.py
+def fetch_laptimes(year, round_num):
+    """Fetch all lap times for a specific race with pagination."""
+    all_data = None
+    offset = 0
+    total_records = None
+    
+    while total_records is None or offset < total_records:
+        url = f"{BASE_URL}/{year}/{round_num}/laps.json?limit={LIMIT}&offset={offset}"
+        logger.info(f"Fetching data from: {url}")
+        
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Initialize all_data with the first response
+            if all_data is None:
+                all_data = data
+                total_records = int(data["MRData"]["total"])
+                logger.info(f"Total records to fetch: {total_records}")
+            else:
+                # Append new lap data to existing data
+                if "Laps" in data["MRData"]["RaceTable"]["Races"][0]:
+                    all_data["MRData"]["RaceTable"]["Races"][0]["Laps"].extend(
+                        data["MRData"]["RaceTable"]["Races"][0]["Laps"]
+                    )
+            
+            offset += LIMIT
+            
+            # Respect rate limits
+            time.sleep(1 / RATE_LIMIT_BURST)  # Ensure we don't exceed burst limit
+            
+        except requests.exceptions.RequestException as e:
+            if hasattr(e.response, "status_code") and e.response.status_code == 429:
+                logger.warning("Rate limit exceeded. Waiting for 60 seconds...")
+                time.sleep(60)  # Wait longer if we hit rate limit
+                continue
+            logger.error(f"Error fetching data: {e}")
+            return None
+    
+    return all_data
+```
+
+**Parameters:**
+- `year` (int): F1 season year
+- `round_num` (int): Round number in the season
+
+**Returns:**
+- `dict`: Complete lap times data with all pages combined
+
+**Pagination:**
+- Fetches 100 records per request (LIMIT = 100)
+- Automatically continues until all lap records are retrieved
+- A typical race has 300-800 lap records
+
+### save_laptimes()
+
+Saves lap times data to the appropriate directory.
+
+```python laptimes.py
+def save_laptimes(data, year, round_num):
+    """Save lap times data to laptimes.json in the appropriate folder."""
+    # Get race name from the data
+    race_name = (
+        data["MRData"]["RaceTable"]["Races"][0]["raceName"].lower().replace(" ", "-")
+    )
+    
+    # Create directory structure
+    year_path = Path(str(year))
+    race_folder = year_path / race_name
+    
+    # Create directories if they don't exist
+    race_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Save the data
+    output_file = race_folder / "laptimes.json"
+    with open(output_file, "w") as f:
+        json.dump(data, f, indent=2)
+    logger.info(f"Saved lap times data to {output_file}")
+```
+
+### main()
+
+Main execution function.
+
+```python laptimes.py
+def main(year, round_num):
+    """Main function to fetch lap times for a specific round in a specific year."""
+    logger.info(f"Fetching lap times for year {year}, round {round_num}")
+    
+    # Fetch lap times data
+    lap_data = fetch_laptimes(year, round_num)
+    
+    if lap_data:
+        # Save the data
+        save_laptimes(lap_data, year, round_num)
+        logger.info(f"Successfully fetched and saved lap times for year {year}, round {round_num}")
+    else:
+        logger.error(f"Failed to fetch lap times for year {year}, round {round_num}")
+```
+
+## Usage
+
+### Basic Usage
+
+```python
+from laptimes import main
+
+# Fetch lap times for 2024 Bahrain GP (Round 1)
+main(2024, 1)
+
+# Fetch lap times for 2024 Monaco GP (Round 8)
+main(2024, 8)
+```
+
+### Command Line
+
+```bash
+python laptimes.py
+```
+
+## API Endpoint
+
+```
+GET https://api.jolpi.ca/ergast/f1/{season}/{round}/laps.json?limit={limit}&offset={offset}
+```
+
+**Query Parameters:**
+- `limit`: Number of lap records per request (default: 100)
+- `offset`: Starting position for pagination
+
+**Example:**
+```
+GET https://api.jolpi.ca/ergast/f1/2024/1/laps.json?limit=100&offset=0
+GET https://api.jolpi.ca/ergast/f1/2024/1/laps.json?limit=100&offset=100
+```
+
+## Output Structure
+
+Lap times are saved to: `{year}/{race-slug}/laptimes.json`
+
+```json
+{
+  "MRData": {
+    "total": "812",
+    "RaceTable": {
+      "season": "2024",
+      "round": "1",
+      "Races": [
+        {
+          "raceName": "Bahrain Grand Prix",
+          "Laps": [
+            {
+              "number": "1",
+              "Timings": [
+                {
+                  "driverId": "verstappen",
+                  "position": "1",
+                  "time": "1:33.523"
+                },
+                {
+                  "driverId": "hamilton",
+                  "position": "2",
+                  "time": "1:34.012"
+                }
+              ]
+            },
+            {
+              "number": "2",
+              "Timings": [
+                {
+                  "driverId": "verstappen",
+                  "position": "1",
+                  "time": "1:32.876"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Configuration
+
+```python
+BASE_URL = "https://api.jolpi.ca/ergast/f1"
+LIMIT = 100  # Number of records per request
+RATE_LIMIT_BURST = 4  # Max requests per second
+RATE_LIMIT_SUSTAINED = 500  # Max requests per hour
+```
+
+## Performance Considerations
+
+### Data Volume
+
+A typical race has:
+- **50-70 laps** per race
+- **20 drivers** on the grid
+- **~1,000-1,400 lap records** total
+
+### Request Count
+
+With a limit of 100 records per request:
+- **10-14 API requests** per race
+- At 4 requests/second = **~3 seconds** per race
+- For a full season (24 races) = **~1 minute**
+
+<Tip>
+  For better performance when fetching multiple races, add a small delay between races to avoid hitting sustained rate limits.
+</Tip>
+
+## Logging
+
+Log file: `laptimes_fetch.log`
+
+```python
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("laptimes_fetch.log"), logging.StreamHandler()],
+)
+```
+
+## See Also
+
+- [Lap Times Data Collection](/data-collection/lap-times)
+- [JSON Schemas](/data-structure/json-schemas)
+- [Rate Limiting](/api/rate-limiting)
+- [Data Fetching Patterns](/api/data-fetching)

@@ -1,0 +1,269 @@
+---
+title: Accessing Data
+description: Learn how to read and query F1 statistics from the JSON archive
+---
+
+## Data Structure
+
+The F1 Stats Archive organizes data in a hierarchical directory structure:
+
+```
+├── 2024/
+│   ├── events.json
+│   ├── bahrain-grand-prix/
+│   │   ├── event_info.json
+│   │   ├── results.json
+│   │   ├── quali_results.json
+│   │   ├── laptimes.json
+│   │   ├── pitstops.json
+│   │   ├── driverPoints.json
+│   │   └── teamPoints.json
+│   ├── saudi-arabian-grand-prix/
+│   └── ...
+├── 2025/
+└── ...
+```
+
+## Reading JSON Data with Python
+
+### Basic File Reading
+
+Here's how to read race results from the archive:
+
+```python
+import json
+from pathlib import Path
+
+# Read race results
+results_file = Path("2024/bahrain-grand-prix/results.json")
+with open(results_file, "r") as f:
+    results_data = json.load(f)
+
+# Access race information
+races = results_data["MRData"]["RaceTable"]["Races"]
+if races:
+    race = races[0]
+    print(f"Race: {race['raceName']}")
+    print(f"Circuit: {race['Circuit']['circuitName']}")
+```
+
+### Traversing the Directory Structure
+
+Use Python's `pathlib` module to programmatically explore the archive:
+
+```python
+from pathlib import Path
+import json
+
+def get_all_seasons():
+    """Get list of all available seasons."""
+    base_dir = Path(".")
+    seasons = [d.name for d in base_dir.iterdir() 
+               if d.is_dir() and d.name.isdigit()]
+    return sorted(seasons)
+
+def get_races_for_season(year):
+    """Get all races for a specific season."""
+    season_dir = Path(str(year))
+    
+    # Read events.json to get race information
+    events_file = season_dir / "events.json"
+    with open(events_file, "r") as f:
+        events_data = json.load(f)
+    
+    races = events_data["MRData"]["RaceTable"]["Races"]
+    return races
+
+def get_race_folder_name(race_name):
+    """Convert race name to folder name format."""
+    return race_name.lower().replace(" ", "-")
+```
+
+<Note>
+Race folder names are created by converting the race name to lowercase and replacing spaces with hyphens.
+</Note>
+
+## Common Query Examples
+
+### Find All Races in 2024
+
+```python
+import json
+from pathlib import Path
+
+def get_2024_races():
+    """Get all races from the 2024 season."""
+    events_file = Path("2024/events.json")
+    
+    with open(events_file, "r") as f:
+        data = json.load(f)
+    
+    races = data["MRData"]["RaceTable"]["Races"]
+    
+    for race in races:
+        print(f"Round {race['round']}: {race['raceName']}")
+        print(f"  Date: {race['date']}")
+        print(f"  Circuit: {race['Circuit']['circuitName']}")
+        print()
+
+get_2024_races()
+```
+
+### Get Fastest Lap Times for a Race
+
+```python
+import json
+from pathlib import Path
+
+def get_fastest_laps(year, race_folder):
+    """Get fastest lap times from a race."""
+    laptimes_file = Path(f"{year}/{race_folder}/laptimes.json")
+    
+    with open(laptimes_file, "r") as f:
+        data = json.load(f)
+    
+    races = data["MRData"]["RaceTable"]["Races"]
+    if not races:
+        return
+    
+    race = races[0]
+    print(f"Race: {race['raceName']}")
+    print(f"\nFastest laps per driver:")
+    
+    # Process all laps to find fastest per driver
+    driver_fastest = {}
+    
+    for lap in race.get("Laps", []):
+        for timing in lap.get("Timings", []):
+            driver_id = timing["driverId"]
+            lap_time = timing["time"]
+            
+            if driver_id not in driver_fastest:
+                driver_fastest[driver_id] = lap_time
+            elif lap_time < driver_fastest[driver_id]:
+                driver_fastest[driver_id] = lap_time
+    
+    for driver_id, time in sorted(driver_fastest.items()):
+        print(f"  {driver_id}: {time}")
+
+# Example usage
+get_fastest_laps(2024, "bahrain-grand-prix")
+```
+
+### Query Race Results
+
+```python
+import json
+from pathlib import Path
+
+def get_race_podium(year, race_folder):
+    """Get the top 3 finishers from a race."""
+    results_file = Path(f"{year}/{race_folder}/results.json")
+    
+    with open(results_file, "r") as f:
+        data = json.load(f)
+    
+    races = data["MRData"]["RaceTable"]["Races"]
+    if not races:
+        return
+    
+    results = races[0].get("Results", [])
+    
+    print(f"Podium for {races[0]['raceName']}:\n")
+    for result in results[:3]:
+        position = result["position"]
+        driver = result["Driver"]
+        constructor = result["Constructor"]
+        
+        print(f"{position}. {driver['givenName']} {driver['familyName']}")
+        print(f"   Team: {constructor['name']}")
+        print()
+
+# Example usage
+get_race_podium(2024, "bahrain-grand-prix")
+```
+
+### Analyze Driver Points Progression
+
+```python
+import json
+from pathlib import Path
+
+def get_driver_points_after_race(year, race_folder):
+    """Get driver championship standings after a specific race."""
+    points_file = Path(f"{year}/{race_folder}/driverPoints.json")
+    
+    with open(points_file, "r") as f:
+        data = json.load(f)
+    
+    standings_list = data["MRData"]["StandingsTable"]["StandingsLists"]
+    if not standings_list:
+        return
+    
+    standings = standings_list[0]
+    print(f"Driver Standings after Round {standings['round']}:\n")
+    
+    for standing in standings["DriverStandings"]:
+        position = standing["position"]
+        driver = standing["Driver"]
+        points = standing["points"]
+        wins = standing["wins"]
+        
+        print(f"{position}. {driver['givenName']} {driver['familyName']}")
+        print(f"   Points: {points} | Wins: {wins}")
+        print()
+
+# Example usage
+get_driver_points_after_race(2024, "bahrain-grand-prix")
+```
+
+## Working with Multiple Races
+
+```python
+from pathlib import Path
+import json
+
+def analyze_season(year):
+    """Analyze all races in a season."""
+    season_dir = Path(str(year))
+    
+    # Get all race folders
+    race_folders = [d for d in season_dir.iterdir() 
+                    if d.is_dir()]
+    
+    print(f"Season {year} Analysis")
+    print(f"Total races: {len(race_folders)}\n")
+    
+    for race_folder in sorted(race_folders):
+        results_file = race_folder / "results.json"
+        
+        if results_file.exists():
+            with open(results_file, "r") as f:
+                data = json.load(f)
+            
+            races = data["MRData"]["RaceTable"]["Races"]
+            if races and "Results" in races[0]:
+                race = races[0]
+                winner = race["Results"][0]
+                driver = winner["Driver"]
+                
+                print(f"{race['raceName']}")
+                print(f"  Winner: {driver['givenName']} {driver['familyName']}")
+                print(f"  Date: {race['date']}")
+                print()
+
+# Example usage
+analyze_season(2024)
+```
+
+<Warning>
+Not all races have complete data available. Always check if files exist and handle missing data gracefully.
+</Warning>
+
+## Data Format Notes
+
+- All timestamps are in ISO 8601 format
+- Times are typically in UTC
+- Lap times are formatted as strings (e.g., "1:32.123")
+- The data follows the Ergast API JSON schema
+- Some historical races may have incomplete data

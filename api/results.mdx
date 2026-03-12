@@ -1,0 +1,316 @@
+---
+title: "results.py"
+description: "Fetch Formula 1 race results for each Grand Prix"
+---
+
+# results.py
+
+The `results.py` script fetches race results for Formula 1 Grand Prix events. It retrieves finishing positions, race times, points awarded, and status information for each driver in a race.
+
+## Overview
+
+This script uses an object-oriented approach with the `RaceResultsFetcher` class to:
+- Fetch race results from the Ergast API
+- Implement rate limiting to respect API constraints
+- Save results to structured JSON files
+- Handle errors and retries gracefully
+
+## RaceResultsFetcher Class
+
+### Initialization
+
+```python results.py
+class RaceResultsFetcher:
+    def __init__(self, base_dir="."):
+        self.base_dir = Path(base_dir)
+        self.base_url = "https://api.jolpi.ca/ergast/f1"
+        # Rate limits
+        self.burst_limit = 4  # requests per second
+        self.last_request_time = 0
+```
+
+**Parameters:**
+- `base_dir` (str): Base directory for data storage (default: current directory)
+
+**Attributes:**
+- `base_dir` (Path): Root directory for race data
+- `base_url` (str): Ergast API base URL
+- `burst_limit` (int): Maximum requests per second
+- `last_request_time` (float): Timestamp of last API request
+
+### Methods
+
+#### get_race_folder_name()
+
+Converts a race object to a folder name.
+
+```python results.py
+def get_race_folder_name(self, race):
+    """Convert race name to folder name format"""
+    return race["raceName"].lower().replace(" ", "-")
+```
+
+**Parameters:**
+- `race` (dict): Race information object
+
+**Returns:**
+- `str`: Folder name (e.g., "british-grand-prix")
+
+#### make_request()
+
+Makes an API request with rate limiting and retry logic.
+
+```python results.py
+def make_request(self, url):
+    """Make a request to the API with rate limiting"""
+    # Ensure we don't exceed burst limit
+    current_time = time.time()
+    time_since_last_request = current_time - self.last_request_time
+    
+    if time_since_last_request < (1 / self.burst_limit):
+        sleep_time = (1 / self.burst_limit) - time_since_last_request
+        logger.debug(f"Rate limiting: sleeping for {sleep_time:.2f} seconds")
+        time.sleep(sleep_time)
+    
+    logger.debug(f"Making request to: {url}")
+    response = requests.get(url)
+    self.last_request_time = time.time()
+    
+    if response.status_code == 429:
+        logger.warning("Rate limit exceeded. Waiting 30 seconds before retrying.")
+        time.sleep(30)
+        return self.make_request(url)
+    
+    if response.status_code != 200:
+        logger.error(f"Error fetching data: {response.status_code} - {response.text}")
+        return None
+    
+    return response.json()
+```
+
+**Parameters:**
+- `url` (str): API endpoint URL
+
+**Returns:**
+- `dict`: JSON response or `None` on error
+
+<Note>
+  The method automatically retries after 30 seconds if a 429 (rate limit) response is received.
+</Note>
+
+#### get_race_info()
+
+Fetches basic race information.
+
+```python results.py
+def get_race_info(self, season, round_num):
+    """Get race information for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}.json"
+    data = self.make_request(url)
+    
+    if not data:
+        return None
+    
+    races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+    if races:
+        return races[0]
+    return None
+```
+
+**Parameters:**
+- `season` (int): F1 season year
+- `round_num` (int): Round number in the season
+
+**Returns:**
+- `dict`: Race information or `None` if not found
+
+#### get_race_results()
+
+Fetches race results for a specific round.
+
+```python results.py
+def get_race_results(self, season, round_num):
+    """Get race results for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}/results.json"
+    return self.make_request(url)
+```
+
+**Parameters:**
+- `season` (int): F1 season year
+- `round_num` (int): Round number
+
+**Returns:**
+- `dict`: Complete results data
+
+#### save_json()
+
+Saves data to a JSON file.
+
+```python results.py
+def save_json(self, data, filepath):
+    """Save data as JSON to the specified filepath"""
+    try:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"Saved data to {filepath}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving data to {filepath}: {e}")
+        return False
+```
+
+**Parameters:**
+- `data` (dict): Data to save
+- `filepath` (str): Destination file path
+
+**Returns:**
+- `bool`: `True` on success, `False` on error
+
+#### fetch_round()
+
+Main method to fetch and save race results.
+
+```python results.py
+def fetch_round(self, season, round_num):
+    """Fetch race results for a specific season and round"""
+    logger.info(f"Fetching results for season {season}, round {round_num}")
+    
+    # Create season directory
+    season_dir = self.base_dir / str(season)
+    os.makedirs(season_dir, exist_ok=True)
+    
+    # Get race info
+    race_info = self.get_race_info(season, round_num)
+    
+    if not race_info:
+        logger.warning(f"No race info found for season {season}, round {round_num}")
+        return
+    
+    race_name = self.get_race_folder_name(race_info)
+    
+    # Create race directory
+    race_dir = season_dir / race_name
+    os.makedirs(race_dir, exist_ok=True)
+    
+    # Get race results
+    race_results = self.get_race_results(season, round_num)
+    
+    if race_results:
+        race_results_path = race_dir / "results.json"
+        self.save_json(race_results, race_results_path)
+    else:
+        logger.warning(f"No results found for season {season}, round {round_num}")
+```
+
+**Parameters:**
+- `season` (int): F1 season year
+- `round_num` (int): Round number
+
+## Usage
+
+### Basic Usage
+
+```python
+from pathlib import Path
+from results import RaceResultsFetcher
+
+# Initialize fetcher
+fetcher = RaceResultsFetcher(base_dir=".")
+
+# Fetch results for 2024 Bahrain GP (Round 1)
+fetcher.fetch_round(2024, 1)
+
+# Fetch results for 2024 Saudi Arabian GP (Round 2)
+fetcher.fetch_round(2024, 2)
+```
+
+### Fetch Multiple Races
+
+```python
+fetcher = RaceResultsFetcher()
+
+# Fetch all races for the 2024 season
+for round_num in range(1, 25):  # Adjust based on calendar
+    fetcher.fetch_round(2024, round_num)
+```
+
+### Command Line Usage
+
+```bash
+# Edit the script to set desired season and round
+python results.py
+```
+
+## API Endpoint
+
+```
+GET https://api.jolpi.ca/ergast/f1/{season}/{round}/results.json
+```
+
+**Example:**
+```
+GET https://api.jolpi.ca/ergast/f1/2024/1/results.json
+```
+
+## Output Structure
+
+Results are saved to: `{year}/{race-slug}/results.json`
+
+```json
+{
+  "MRData": {
+    "RaceTable": {
+      "season": "2024",
+      "round": "1",
+      "Races": [
+        {
+          "season": "2024",
+          "round": "1",
+          "raceName": "Bahrain Grand Prix",
+          "Results": [
+            {
+              "number": "1",
+              "position": "1",
+              "points": "25",
+              "Driver": {
+                "driverId": "verstappen",
+                "code": "VER",
+                "givenName": "Max",
+                "familyName": "Verstappen"
+              },
+              "Constructor": {
+                "constructorId": "red_bull",
+                "name": "Red Bull"
+              },
+              "Time": {
+                "time": "1:28:37.389"
+              },
+              "status": "Finished"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Logging
+
+The script creates a log file: `race_results_fetch.log`
+
+```python
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("race_results_fetch.log"), logging.StreamHandler()],
+)
+```
+
+## See Also
+
+- [Race Results Data Collection](/data-collection/race-results)
+- [Data Structure Overview](/data-structure/overview)
+- [Rate Limiting](/api/rate-limiting)
+- [Data Fetching Patterns](/api/data-fetching)

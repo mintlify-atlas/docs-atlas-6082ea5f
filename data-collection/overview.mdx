@@ -1,0 +1,168 @@
+---
+title: Data Collection Overview
+description: Understanding the F1 Stats Archive data collection pipeline
+---
+
+The F1 Stats Archive collects comprehensive Formula 1 statistics from the Ergast API using a suite of Python scripts. Each script is responsible for fetching a specific type of data and storing it in a structured format.
+
+## Data Collection Workflow
+
+The data collection process follows a specific order:
+
+1. **Events** - Fetch race calendars for each season
+2. **Race Results** - Collect finishing positions and race outcomes
+3. **Qualifying Results** - Gather qualifying session data
+4. **Standings** - Calculate driver and constructor championship points
+5. **Lap Times** - Retrieve detailed lap-by-lap timing data
+6. **Pitstops** - Collect pit stop information (2011 onwards)
+7. **Sprint Races** - Fetch sprint race results (2021 onwards)
+
+## Directory Structure
+
+Data is organized in a hierarchical structure:
+
+```
+{year}/
+├── events.json                 # Season calendar
+├── {race-name}/
+│   ├── event_info.json        # Race details
+│   ├── results.json           # Race results
+│   ├── quali_results.json     # Qualifying results
+│   ├── driverPoints.json      # Driver standings after this race
+│   ├── teamPoints.json        # Constructor standings after this race
+│   ├── laptimes.json          # Lap-by-lap timing (1996+)
+│   ├── pitstops.json          # Pit stop data (2011+)
+│   └── sprint_results.json    # Sprint race results (select races)
+```
+
+## API Base URL
+
+All scripts use the Ergast API via Jolpi:
+
+```python
+BASE_URL = "https://api.jolpi.ca/ergast/f1"
+```
+
+## Rate Limiting Strategy
+
+<Warning>
+The Ergast API enforces strict rate limits that all scripts must respect:
+- **Burst limit**: 4 requests per second
+- **Sustained limit**: 500 requests per hour
+</Warning>
+
+All scripts implement rate limiting using one of these approaches:
+
+### Time-based Delay
+
+```python
+RATE_LIMIT_BURST = 4  # requests per second
+REQUEST_DELAY = 1 / RATE_LIMIT_BURST  # 0.25 seconds between requests
+
+def fetch_with_rate_limit(url):
+    time.sleep(REQUEST_DELAY)
+    response = requests.get(url)
+    
+    if response.status_code == 429:
+        time.sleep(60)  # Wait and retry
+        return fetch_with_rate_limit(url)
+    
+    return response.json()
+```
+
+### Adaptive Rate Limiting
+
+```python
+class Fetcher:
+    def __init__(self):
+        self.burst_limit = 4
+        self.last_request_time = 0
+    
+    def make_request(self, url):
+        current_time = time.time()
+        time_since_last = current_time - self.last_request_time
+        
+        if time_since_last < (1 / self.burst_limit):
+            sleep_time = (1 / self.burst_limit) - time_since_last
+            time.sleep(sleep_time)
+        
+        response = requests.get(url)
+        self.last_request_time = time.time()
+        return response.json()
+```
+
+## Common Utilities
+
+### Race Name Slugification
+
+All scripts convert race names to folder names consistently:
+
+```python
+def slugify(race_name):
+    return race_name.lower().replace(" ", "-")
+
+def get_race_folder_name(race):
+    return race["raceName"].lower().replace(" ", "-")
+```
+
+### Directory Creation
+
+```python
+def create_directory(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+```
+
+## Logging
+
+Most scripts use Python's logging module for tracking progress:
+
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("script_name.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+```
+
+<Note>
+Each script writes logs to both a file and the console, making it easy to monitor progress and debug issues.
+</Note>
+
+## Data Availability
+
+Different types of data are available for different time periods:
+
+| Data Type | Available From | Notes |
+|-----------|---------------|-------|
+| Events | 1950 | Full F1 history |
+| Race Results | 1950 | Complete results |
+| Qualifying | 1994 | Earlier years may be incomplete |
+| Standings | 1950 | Championship points |
+| Lap Times | 1996 | Lap-by-lap timing |
+| Pitstops | 2011 | Detailed pit stop data |
+| Sprint Races | 2021 | Only for sprint race weekends |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Events" icon="calendar" href="/data-collection/events">
+    Learn how to fetch race calendars
+  </Card>
+  <Card title="Race Results" icon="flag-checkered" href="/data-collection/race-results">
+    Collect race finishing positions
+  </Card>
+  <Card title="Qualifying" icon="stopwatch" href="/data-collection/qualifying">
+    Gather qualifying session data
+  </Card>
+  <Card title="Standings" icon="trophy" href="/data-collection/standings">
+    Calculate championship points
+  </Card>
+</CardGroup>

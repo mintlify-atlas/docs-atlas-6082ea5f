@@ -1,0 +1,105 @@
+---
+title: Introduction
+description: A comprehensive Formula 1 historical statistics archive with automated data collection from the Ergast API
+---
+
+# Welcome to F1 Stats Archive
+
+F1 Stats Archive is a comprehensive data platform that collects, organizes, and maintains historical Formula 1 statistics spanning from 1950 to the present day. The project uses Python scripts to fetch data from the Ergast API and stores it in a structured JSON format, making it easy to access and analyze decades of F1 racing history.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Historical Coverage" icon="calendar" iconType="duotone">
+    Complete F1 data from 1950 to present, covering over 1,100 races across 77 seasons
+  </Card>
+  <Card title="Comprehensive Statistics" icon="chart-line" iconType="duotone">
+    Race results, qualifying, lap times, pitstops, driver standings, and constructor championships
+  </Card>
+  <Card title="Automated Updates" icon="rotate" iconType="duotone">
+    GitHub Actions workflow automatically fetches new race data as the season progresses
+  </Card>
+  <Card title="Structured Data" icon="folder-tree" iconType="duotone">
+    Organized JSON files with consistent schema for easy data access and analysis
+  </Card>
+</CardGroup>
+
+## What's Included
+
+The archive contains the following data types for each Formula 1 race:
+
+- **Event Information** - Race schedule, circuit details, and session times
+- **Race Results** - Finishing positions, times, and points awarded
+- **Qualifying Results** - Grid positions and qualifying lap times
+- **Driver Standings** - Championship points after each race
+- **Constructor Standings** - Team championship points throughout the season
+- **Lap Times** - Complete lap-by-lap timing data
+- **Pitstop Data** - Pitstop times and strategies (from 2011 onwards)
+- **Sprint Race Results** - Sprint qualifying results for modern F1 seasons
+
+## How It Works
+
+The project uses eight specialized Python scripts that interact with the [Ergast API](https://ergast.com/mrd/) to fetch Formula 1 data:
+
+1. **events.py** - Fetches the race calendar and creates the directory structure
+2. **results.py** - Retrieves race results for each Grand Prix
+3. **quali_results.py** - Collects qualifying session results
+4. **driver_points.py** - Fetches driver championship standings
+5. **team_points.py** - Retrieves constructor championship standings
+6. **laptimes.py** - Downloads complete lap timing data
+7. **pitstops.py** - Collects pitstop information
+8. **sprint_results.py** - Fetches sprint race results
+
+All scripts implement rate limiting to respect the Ergast API's usage limits (4 requests per second, 500 requests per hour) and include automatic retry logic for reliability.
+
+## Data Structure
+
+Data is organized in a hierarchical directory structure:
+
+```
+├── 1950/
+│   ├── events.json
+│   ├── british-grand-prix/
+│   │   ├── event_info.json
+│   │   ├── results.json
+│   │   ├── quali_results.json
+│   │   ├── driverPoints.json
+│   │   └── teamPoints.json
+│   └── ...
+├── 1951/
+├── ...
+└── 2026/
+```
+
+Each season has its own directory containing race subdirectories with comprehensive statistics in JSON format.
+
+## Getting Started
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Get up and running in minutes with the quick start guide
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Learn how to install and configure the project
+  </Card>
+  <Card title="Data Collection" icon="database" href="/data-collection/overview">
+    Understand how data is collected and organized
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/events">
+    Explore the Python scripts and their usage
+  </Card>
+</CardGroup>
+
+## Use Cases
+
+This archive is perfect for:
+
+- **Data Analysis** - Analyze historical trends, driver performance, and team statistics
+- **Machine Learning** - Train models on decades of racing data
+- **Visualization** - Create charts and dashboards showing F1 history
+- **Research** - Study the evolution of Formula 1 over time
+- **Applications** - Build F1-focused apps with reliable historical data
+
+## License
+
+This project is licensed under the MIT License. The data comes from the Ergast API, which provides Formula 1 race data under specific terms of use.

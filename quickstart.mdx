@@ -1,80 +1,183 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: "Quick Start"
+description: "Get started with F1 Stats Archive in minutes"
 ---
 
-## Get started in three steps
+Get F1 Stats Archive up and running in just a few minutes. This guide will help you fetch your first Formula 1 race data from the Ergast API.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
+Before you begin, make sure you have:
+- Python 3.7 or higher installed
+- Git installed on your system
+- An internet connection to access the Ergast API
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Clone the repository">
+    Clone the F1 Stats Archive repository to your local machine:
 
-### Step 2: Deploy your changes
+    ```bash
+    git clone <your-repo-url>
+    cd f1-stats-archive
+    ```
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Install dependencies">
+    Install the required Python packages using pip:
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    ```bash
+    pip install -r requirements.txt
+    ```
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+    The project only requires the `requests` library for making API calls.
+  </Step>
 
-### Step 3: Go live
+  <Step title="Fetch race events">
+    Start by fetching race events for a season. Run the events script to get all races for 2026:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    python events.py
+    ```
 
-## Next steps
+    This script will:
+    - Create a directory structure organized by year
+    - Fetch all race events for the specified season(s)
+    - Save event data to `events.json` in each year folder
+    - Create individual folders for each race
 
-Now that you have your docs running, explore these key features:
+    <Note>
+      By default, the script is configured to fetch 2026 data. You can modify the `start_year` and `end_year` variables in `events.py` to fetch different seasons.
+    </Note>
+  </Step>
+
+  <Step title="Fetch race results">
+    Now fetch the actual race results for a specific round:
+
+    ```bash
+    python results.py
+    ```
+
+    The `RaceResultsFetcher` class handles:
+    - Rate limiting (4 requests per second)
+    - Automatic retry on rate limit errors
+    - Organized folder structure by season and race
+
+    <CodeGroup>
+      ```python Fetch a specific round
+      from results import RaceResultsFetcher
+
+      fetcher = RaceResultsFetcher(base_dir=".")
+      fetcher.fetch_round(2026, 1)  # Fetch Round 1 of 2026
+      ```
+
+      ```python Fetch multiple rounds
+      from results import RaceResultsFetcher
+
+      fetcher = RaceResultsFetcher(base_dir=".")
+      for round_num in range(1, 6):
+          fetcher.fetch_round(2026, round_num)
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Explore the data">
+    Your data is now organized in a structured folder hierarchy:
+
+    ```
+    2026/
+    ├── events.json
+    └── australian-grand-prix/
+        ├── event_info.json
+        ├── results.json
+        ├── quali_results.json
+        ├── driverPoints.json
+        └── laptimes.json
+    ```
+
+    Each race folder contains JSON files with different data types:
+    - `results.json` - Race finishing positions and details
+    - `quali_results.json` - Qualifying session results
+    - `driverPoints.json` - Driver championship standings after this race
+    - `laptimes.json` - Lap-by-lap timing data
+  </Step>
+</Steps>
+
+## Example: Fetch Complete Race Data
+
+Here's a complete example to fetch all data for a specific race:
+
+```python
+from results import RaceResultsFetcher
+from quali_results import QualifyingResultsFetcher
+from driver_points import process_round
+from laptimes import main as fetch_laptimes
+
+season = 2026
+round_num = 1
+
+# Fetch race results
+results_fetcher = RaceResultsFetcher(base_dir=".")
+results_fetcher.fetch_round(season, round_num)
+
+# Fetch qualifying results
+quali_fetcher = QualifyingResultsFetcher(base_dir=".")
+quali_fetcher.fetch_round(season, round_num)
+
+# Fetch driver standings
+process_round(season, round_num)
+
+# Fetch lap times
+fetch_laptimes(season, round_num)
+```
+
+## Understanding the Data Structure
+
+The Ergast API returns data in a nested JSON structure. Here's what a typical race result looks like:
+
+```json
+{
+  "MRData": {
+    "RaceTable": {
+      "Races": [
+        {
+          "season": "2026",
+          "round": "1",
+          "raceName": "Australian Grand Prix",
+          "Results": [
+            {
+              "position": "1",
+              "Driver": {
+                "driverId": "verstappen",
+                "givenName": "Max",
+                "familyName": "Verstappen"
+              },
+              "Constructor": {
+                "constructorId": "red_bull",
+                "name": "Red Bull"
+              },
+              "Time": {
+                "time": "1:32:14.789"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+<Warning>
+  The Ergast API has rate limits of 4 requests per second and 500 requests per hour. All scripts include automatic rate limiting to stay within these bounds.
+</Warning>
+
+## Next Steps
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Installation" icon="download" href="/installation">
+    Learn about detailed installation and configuration options
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore all available scripts and their parameters
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

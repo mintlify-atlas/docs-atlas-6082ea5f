@@ -1,0 +1,129 @@
+---
+title: Data Structure Overview
+description: Understanding the organization of the F1 Stats Archive
+---
+
+The F1 Stats Archive is organized in a hierarchical structure that mirrors the Formula 1 calendar, making it intuitive to navigate and query historical F1 data.
+
+## Organization Philosophy
+
+The archive follows a logical hierarchy from broadest to most specific:
+
+```
+Year → Race → Data Files
+```
+
+This structure allows you to:
+- Navigate chronologically through F1 history (1950-present)
+- Access all data for a specific season
+- Drill down to individual race weekends
+- Find specific data types (results, qualifying, lap times, etc.)
+
+## Directory Hierarchy
+
+Each year directory contains:
+- **Season-level files**: Championship standings and race calendar
+- **Race directories**: Individual folders for each Grand Prix
+
+### Season-Level Files
+
+At the year level (e.g., `2024/`):
+
+- `events.json` - Calendar of all races in the season
+- `driverPoints.json` - Final driver championship standings
+- `teamPoints.json` - Final constructor championship standings
+
+### Race-Level Files
+
+Each race directory (e.g., `2024/australian-grand-prix/`) contains:
+
+- `event_info.json` - Race weekend schedule and circuit information
+- `results.json` - Race results with positions, times, and points
+- `quali_results.json` - Qualifying results for all sessions (Q1, Q2, Q3)
+- `laptimes.json` - Lap-by-lap timing data for all drivers
+- `pitstops.json` - Pit stop data including duration and lap number
+- `driverPoints.json` - Driver standings after this race
+- `teamPoints.json` - Constructor standings after this race
+- `sprint_results.json` - Sprint race results (only for sprint weekends)
+
+## Data Consistency
+
+All data files follow consistent schemas based on the Ergast API format:
+
+- Data is stored in JSON format
+- Each file contains metadata headers (`MRData` wrapper)
+- Driver and constructor information uses consistent IDs across all files
+- Times are stored in ISO 8601 format
+- Coordinates use decimal degrees for circuit locations
+
+## Navigating the Archive
+
+### By Time Period
+
+Start at a year directory to explore a complete season:
+```
+2024/                    # Season overview
+├── events.json          # All races
+├── driverPoints.json    # Final standings
+└── teamPoints.json      # Final team standings
+```
+
+### By Race Weekend
+
+Drill into a race directory for complete weekend data:
+```
+2024/australian-grand-prix/
+├── event_info.json      # Circuit and schedule
+├── quali_results.json   # Qualifying
+├── results.json         # Race results
+└── laptimes.json        # Detailed lap data
+```
+
+### By Data Type
+
+Access the same data type across multiple races:
+- Compare qualifying performance: `*/*/quali_results.json`
+- Track championship progression: `*/driverPoints.json`
+- Analyze pit strategies: `*/*/pitstops.json`
+
+## Historical Coverage
+
+The archive spans from **1950** (the first F1 World Championship) to the present day:
+
+- Early years (1950s-1990s) have fewer data types due to limited historical records
+- Modern seasons (2000s+) include comprehensive data
+- Lap times and pit stops become available from 1996 onwards
+- Sprint races appear from 2021 onwards
+
+## Use Cases
+
+This structure supports various analytical workflows:
+
+<AccordionGroup>
+  <Accordion title="Season Analysis">
+    Access `events.json` and championship standings files to analyze season-long trends, championship battles, and calendar changes over time.
+  </Accordion>
+  
+  <Accordion title="Race Comparison">
+    Compare the same Grand Prix across different years by navigating to the same race name in different year directories.
+  </Accordion>
+  
+  <Accordion title="Driver Performance">
+    Track a driver's qualifying and race results by searching for their `driverId` across multiple `results.json` and `quali_results.json` files.
+  </Accordion>
+  
+  <Accordion title="Strategy Analysis">
+    Use `pitstops.json` and `laptimes.json` to analyze tire strategies, pit stop efficiency, and stint performance.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Directory Layout" icon="folder-tree" href="/data-structure/directory-layout">
+    Explore the detailed file and folder structure
+  </Card>
+  <Card title="JSON Schemas" icon="code" href="/data-structure/json-schemas">
+    Learn about the structure of each data file
+  </Card>
+</CardGroup>

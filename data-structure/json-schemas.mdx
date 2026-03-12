@@ -1,0 +1,678 @@
+---
+title: JSON Schemas
+description: Detailed documentation of JSON file structures and data fields
+---
+
+All JSON files in the F1 Stats Archive follow schemas based on the Ergast API format. This page documents the structure of each file type with real examples.
+
+## Common Structure
+
+All JSON files share a common wrapper structure:
+
+```json
+{
+  "MRData": {
+    "xmlns": "",
+    "series": "f1",
+    "url": "https://api.jolpi.ca/ergast/f1/...",
+    "limit": "30",
+    "offset": "0",
+    "total": "24",
+    // Specific data tables here
+  }
+}
+```
+
+The `MRData` object contains metadata about the API response and wraps the actual race data.
+
+---
+
+## Season-Level Files
+
+<AccordionGroup>
+  <Accordion title="events.json" icon="calendar">
+    **Location:** `{year}/events.json`
+    
+    **Description:** Complete race calendar for the season with circuit information and session schedules.
+    
+    **Schema:**
+    ```json
+    {
+      "MRData": {
+        "RaceTable": {
+          "season": "2024",
+          "Races": [
+            {
+              "season": "2024",
+              "round": "3",
+              "url": "https://en.wikipedia.org/wiki/2024_Australian_Grand_Prix",
+              "raceName": "Australian Grand Prix",
+              "Circuit": {
+                "circuitId": "albert_park",
+                "url": "https://en.wikipedia.org/wiki/Albert_Park_Circuit",
+                "circuitName": "Albert Park Grand Prix Circuit",
+                "Location": {
+                  "lat": "-37.8497",
+                  "long": "144.968",
+                  "locality": "Melbourne",
+                  "country": "Australia"
+                }
+              },
+              "date": "2024-03-24",
+              "time": "04:00:00Z",
+              "FirstPractice": {
+                "date": "2024-03-22",
+                "time": "01:30:00Z"
+              },
+              "SecondPractice": {
+                "date": "2024-03-22",
+                "time": "05:00:00Z"
+              },
+              "ThirdPractice": {
+                "date": "2024-03-23",
+                "time": "01:30:00Z"
+              },
+              "Qualifying": {
+                "date": "2024-03-23",
+                "time": "05:00:00Z"
+              }
+            }
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Sprint Weekend Example:**
+    ```json
+    {
+      "season": "2024",
+      "round": "5",
+      "raceName": "Chinese Grand Prix",
+      "date": "2024-04-21",
+      "FirstPractice": {
+        "date": "2024-04-19",
+        "time": "03:30:00Z"
+      },
+      "Qualifying": {
+        "date": "2024-04-20",
+        "time": "07:00:00Z"
+      },
+      "Sprint": {
+        "date": "2024-04-20",
+        "time": "03:00:00Z"
+      },
+      "SprintQualifying": {
+        "date": "2024-04-19",
+        "time": "07:30:00Z"
+      }
+    }
+    ```
+    
+    <Info>
+      Sprint weekends have `Sprint` and `SprintQualifying` fields instead of `SecondPractice` and `ThirdPractice`.
+    </Info>
+  </Accordion>
+  
+  <Accordion title="driverPoints.json" icon="trophy">
+    **Location:** `{year}/driverPoints.json`
+    
+    **Description:** Final driver championship standings for the season.
+    
+    **Schema:**
+    ```json
+    {
+      "MRData": {
+        "StandingsTable": {
+          "season": "2024",
+          "round": "24",
+          "StandingsLists": [
+            {
+              "season": "2024",
+              "round": "24",
+              "DriverStandings": [
+                {
+                  "position": "1",
+                  "positionText": "1",
+                  "points": "437",
+                  "wins": "9",
+                  "Driver": {
+                    "driverId": "max_verstappen",
+                    "permanentNumber": "33",
+                    "code": "VER",
+                    "url": "http://en.wikipedia.org/wiki/Max_Verstappen",
+                    "givenName": "Max",
+                    "familyName": "Verstappen",
+                    "dateOfBirth": "1997-09-30",
+                    "nationality": "Dutch"
+                  },
+                  "Constructors": [
+                    {
+                      "constructorId": "red_bull",
+                      "url": "http://en.wikipedia.org/wiki/Red_Bull_Racing",
+                      "name": "Red Bull",
+                      "nationality": "Austrian"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Key Fields:**
+    - `position`: Championship position (1-20+)
+    - `points`: Total points accumulated
+    - `wins`: Number of race wins
+    - `driverId`: Unique driver identifier (lowercase with underscores)
+    - `code`: Three-letter driver code (e.g., VER, HAM, LEC)
+  </Accordion>
+  
+  <Accordion title="teamPoints.json" icon="users">
+    **Location:** `{year}/teamPoints.json`
+    
+    **Description:** Final constructor championship standings for the season.
+    
+    **Schema:**
+    ```json
+    {
+      "MRData": {
+        "StandingsTable": {
+          "season": "2024",
+          "round": "24",
+          "StandingsLists": [
+            {
+              "season": "2024",
+              "round": "24",
+              "ConstructorStandings": [
+                {
+                  "position": "1",
+                  "positionText": "1",
+                  "points": "666",
+                  "wins": "6",
+                  "Constructor": {
+                    "constructorId": "mclaren",
+                    "url": "http://en.wikipedia.org/wiki/McLaren",
+                    "name": "McLaren",
+                    "nationality": "British"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Key Fields:**
+    - `position`: Championship position
+    - `points`: Combined points from both drivers
+    - `wins`: Number of race wins
+    - `constructorId`: Unique team identifier
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Race-Level Files
+
+<AccordionGroup>
+  <Accordion title="event_info.json" icon="info-circle">
+    **Location:** `{year}/{race-name}/event_info.json`
+    
+    **Description:** Race weekend information including circuit details and session schedule.
+    
+    **Schema:**
+    ```json
+    {
+      "season": "2024",
+      "round": "3",
+      "url": "https://en.wikipedia.org/wiki/2024_Australian_Grand_Prix",
+      "raceName": "Australian Grand Prix",
+      "Circuit": {
+        "circuitId": "albert_park",
+        "url": "https://en.wikipedia.org/wiki/Albert_Park_Circuit",
+        "circuitName": "Albert Park Grand Prix Circuit",
+        "Location": {
+          "lat": "-37.8497",
+          "long": "144.968",
+          "locality": "Melbourne",
+          "country": "Australia"
+        }
+      },
+      "date": "2024-03-24",
+      "time": "04:00:00Z",
+      "FirstPractice": {
+        "date": "2024-03-22",
+        "time": "01:30:00Z"
+      },
+      "SecondPractice": {
+        "date": "2024-03-22",
+        "time": "05:00:00Z"
+      },
+      "ThirdPractice": {
+        "date": "2024-03-23",
+        "time": "01:30:00Z"
+      },
+      "Qualifying": {
+        "date": "2024-03-23",
+        "time": "05:00:00Z"
+      }
+    }
+    ```
+    
+    This is a simplified version of a single race entry from `events.json`.
+  </Accordion>
+  
+  <Accordion title="results.json" icon="flag-checkered">
+    **Location:** `{year}/{race-name}/results.json`
+    
+    **Description:** Complete race results including finishing positions, times, and points.
+    
+    **Schema:**
+    ```json
+    {
+      "MRData": {
+        "RaceTable": {
+          "season": "2024",
+          "round": "3",
+          "Races": [
+            {
+              "season": "2024",
+              "round": "3",
+              "raceName": "Australian Grand Prix",
+              "date": "2024-03-24",
+              "Results": [
+                {
+                  "number": "55",
+                  "position": "1",
+                  "positionText": "1",
+                  "points": "25",
+                  "Driver": {
+                    "driverId": "sainz",
+                    "code": "SAI",
+                    "givenName": "Carlos",
+                    "familyName": "Sainz",
+                    "nationality": "Spanish"
+                  },
+                  "Constructor": {
+                    "constructorId": "ferrari",
+                    "name": "Ferrari",
+                    "nationality": "Italian"
+                  },
+                  "grid": "2",
+                  "laps": "58",
+                  "status": "Finished",
+                  "Time": {
+                    "millis": "4826843",
+                    "time": "1:20:26.843"
+                  },
+                  "FastestLap": {
+                    "rank": "3",
+                    "lap": "48",
+                    "Time": {
+                      "time": "1:20.031"
+                    },
+                    "AverageSpeed": {
+                      "units": "kph",
+                      "speed": "237.418"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Key Fields:**
+    - `position`: Finishing position (or classification)
+    - `positionText`: Position as text ("1", "2", "R" for retired, "D" for disqualified)
+    - `grid`: Starting grid position
+    - `laps`: Laps completed
+    - `status`: "Finished", "Retired", "Lapped", etc.
+    - `Time.millis`: Race time in milliseconds (winner only)
+    - `Time.time`: Race time or gap to winner
+    - `FastestLap`: Driver's fastest lap information
+  </Accordion>
+  
+  <Accordion title="quali_results.json" icon="gauge-high">
+    **Location:** `{year}/{race-name}/quali_results.json`
+    
+    **Description:** Qualifying results showing times from Q1, Q2, and Q3 sessions.
+    
+    **Schema:**
+    ```json
+    {
+      "MRData": {
+        "RaceTable": {
+          "season": "2024",
+          "round": "3",
+          "Races": [
+            {
+              "season": "2024",
+              "round": "3",
+              "raceName": "Australian Grand Prix",
+              "date": "2024-03-24",
+              "QualifyingResults": [
+                {
+                  "number": "1",
+                  "position": "1",
+                  "Driver": {
+                    "driverId": "max_verstappen",
+                    "code": "VER",
+                    "givenName": "Max",
+                    "familyName": "Verstappen"
+                  },
+                  "Constructor": {
+                    "constructorId": "red_bull",
+                    "name": "Red Bull"
+                  },
+                  "Q1": "1:16.819",
+                  "Q2": "1:16.387",
+                  "Q3": "1:15.915"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Key Fields:**
+    - `Q1`: Fastest lap time in Q1 session
+    - `Q2`: Fastest lap time in Q2 session (if reached)
+    - `Q3`: Fastest lap time in Q3 session (if reached)
+    
+    <Info>
+      Drivers eliminated in Q1 only have `Q1` times. Drivers eliminated in Q2 have `Q1` and `Q2` times. Top 10 drivers have all three times.
+    </Info>
+  </Accordion>
+  
+  <Accordion title="laptimes.json" icon="stopwatch">
+    **Location:** `{year}/{race-name}/laptimes.json`
+    
+    **Description:** Lap-by-lap timing data for every driver throughout the race.
+    
+    **Schema:**
+    ```json
+    {
+      "MRData": {
+        "RaceTable": {
+          "season": "2024",
+          "round": "3",
+          "Races": [
+            {
+              "season": "2024",
+              "round": "3",
+              "raceName": "Australian Grand Prix",
+              "date": "2024-03-24",
+              "Laps": [
+                {
+                  "number": "1",
+                  "Timings": [
+                    {
+                      "driverId": "max_verstappen",
+                      "position": "1",
+                      "time": "1:27.458"
+                    },
+                    {
+                      "driverId": "sainz",
+                      "position": "2",
+                      "time": "1:28.375"
+                    }
+                  ]
+                },
+                {
+                  "number": "2",
+                  "Timings": [
+                    // Lap 2 times...
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Key Fields:**
+    - `number`: Lap number
+    - `Timings`: Array of all drivers' times for this lap
+    - `position`: Position at the end of this lap
+    - `time`: Lap time
+    
+    <Warning>
+      This file can be very large (100+ KB) for modern races with 50+ laps and 20 drivers.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="pitstops.json" icon="wrench">
+    **Location:** `{year}/{race-name}/pitstops.json`
+    
+    **Description:** All pit stop data including lap number, stop duration, and time of day.
+    
+    **Schema:**
+    ```json
+    {
+      "MRData": {
+        "RaceTable": {
+          "season": "2024",
+          "round": "3",
+          "Races": [
+            {
+              "season": "2024",
+              "round": "3",
+              "raceName": "Australian Grand Prix",
+              "date": "2024-03-24",
+              "PitStops": [
+                {
+                  "driverId": "ricciardo",
+                  "lap": "5",
+                  "stop": "1",
+                  "time": "15:10:25",
+                  "duration": "18.265"
+                },
+                {
+                  "driverId": "albon",
+                  "lap": "6",
+                  "stop": "1",
+                  "time": "15:11:45",
+                  "duration": "17.755"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Key Fields:**
+    - `lap`: Lap number when pit stop occurred
+    - `stop`: Stop number for this driver (1, 2, 3, etc.)
+    - `time`: Local time of day (HH:MM:SS)
+    - `duration`: Pit stop duration in seconds
+    
+    <Tip>
+      Use `duration` to compare pit stop efficiency across teams and races.
+    </Tip>
+  </Accordion>
+  
+  <Accordion title="sprint_results.json" icon="bolt">
+    **Location:** `{year}/{race-name}/sprint_results.json` (sprint weekends only)
+    
+    **Description:** Sprint race results with positions, times, and points awarded.
+    
+    **Schema:**
+    ```json
+    {
+      "MRData": {
+        "RaceTable": {
+          "season": "2024",
+          "round": "5",
+          "Races": [
+            {
+              "season": "2024",
+              "round": "5",
+              "raceName": "Chinese Grand Prix",
+              "date": "2024-04-21",
+              "SprintResults": [
+                {
+                  "number": "1",
+                  "position": "1",
+                  "positionText": "1",
+                  "points": "8",
+                  "Driver": {
+                    "driverId": "max_verstappen",
+                    "code": "VER",
+                    "givenName": "Max",
+                    "familyName": "Verstappen"
+                  },
+                  "Constructor": {
+                    "constructorId": "red_bull",
+                    "name": "Red Bull"
+                  },
+                  "grid": "4",
+                  "laps": "19",
+                  "status": "Finished",
+                  "Time": {
+                    "millis": "1924660",
+                    "time": "32:04.660"
+                  },
+                  "FastestLap": {
+                    "rank": "1",
+                    "lap": "3",
+                    "Time": {
+                      "time": "1:40.331"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+    ```
+    
+    **Sprint Points (2024):**
+    - 1st: 8 points
+    - 2nd: 7 points
+    - 3rd: 6 points
+    - 4th: 5 points
+    - 5th: 4 points
+    - 6th: 3 points
+    - 7th: 2 points
+    - 8th: 1 point
+    
+    <Info>
+      Sprint race format and points have changed over the years. Always check the `points` field for actual points awarded.
+    </Info>
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Common Data Types
+
+### Driver Object
+
+Appears in all race data:
+
+```json
+{
+  "driverId": "max_verstappen",
+  "permanentNumber": "33",
+  "code": "VER",
+  "url": "http://en.wikipedia.org/wiki/Max_Verstappen",
+  "givenName": "Max",
+  "familyName": "Verstappen",
+  "dateOfBirth": "1997-09-30",
+  "nationality": "Dutch"
+}
+```
+
+### Constructor Object
+
+Appears in all race data:
+
+```json
+{
+  "constructorId": "red_bull",
+  "url": "http://en.wikipedia.org/wiki/Red_Bull_Racing",
+  "name": "Red Bull",
+  "nationality": "Austrian"
+}
+```
+
+### Circuit Object
+
+Appears in event files:
+
+```json
+{
+  "circuitId": "albert_park",
+  "url": "https://en.wikipedia.org/wiki/Albert_Park_Circuit",
+  "circuitName": "Albert Park Grand Prix Circuit",
+  "Location": {
+    "lat": "-37.8497",
+    "long": "144.968",
+    "locality": "Melbourne",
+    "country": "Australia"
+  }
+}
+```
+
+### Time Object
+
+Appears in results:
+
+```json
+{
+  "millis": "4826843",
+  "time": "1:20:26.843"
+}
+```
+
+---
+
+## Data Validation
+
+<Warning>
+  **Field Presence**
+  
+  Not all fields are guaranteed to exist in every record:
+  - `FastestLap` may be missing for retired drivers
+  - `Time` may be missing for non-finishers
+  - `AverageSpeed` appears inconsistently
+  - Historical data may have fewer fields
+</Warning>
+
+<Tip>
+  **Consistent Identifiers**
+  
+  Use these IDs for consistent lookups across files:
+  - `driverId`: "max_verstappen", "hamilton", "leclerc"
+  - `constructorId`: "red_bull", "ferrari", "mclaren"
+  - `circuitId`: "monaco", "silverstone", "monza"
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Data Structure Overview" icon="diagram-project" href="/data-structure/overview">
+    Return to the overview for navigation guidance
+  </Card>
+  <Card title="Directory Layout" icon="folder-tree" href="/data-structure/directory-layout">
+    See how files are organized on disk
+  </Card>
+</CardGroup>

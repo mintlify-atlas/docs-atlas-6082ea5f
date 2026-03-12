@@ -1,0 +1,318 @@
+---
+title: Championship Standings
+description: Collecting driver and constructor championship points
+---
+
+Championship standings are collected using two separate scripts that track cumulative points throughout the season.
+
+## Scripts Overview
+
+Two scripts manage standings data:
+
+1. **driver_points.py** - Driver championship standings
+2. **team_points.py** - Constructor championship standings
+
+Both scripts fetch standings after each race round, showing cumulative points up to that point in the season.
+
+## API Endpoints
+
+### Driver Standings
+
+```python
+url = f"https://api.jolpi.ca/ergast/f1/{season}/{round_num}/driverstandings/"
+```
+
+### Constructor Standings
+
+```python
+url = f"https://api.jolpi.ca/ergast/f1/{season}/{round_num}/constructorstandings.json"
+```
+
+## Driver Standings (driver_points.py)
+
+Location: `~/workspace/source/driver_points.py`
+
+### Key Functions
+
+```python
+BASE_URL = "https://api.jolpi.ca/ergast/f1"
+RATE_LIMIT_BURST = 2  # requests per second
+RATE_LIMIT_SUSTAINED = 500  # requests per hour
+REQUEST_DELAY = 1 / RATE_LIMIT_BURST
+
+def fetch_driver_standings(season, round_num):
+    """Fetch driver standings for a specific round in a season"""
+    url = f"{BASE_URL}/{season}/{round_num}/driverstandings/"
+    return fetch_with_rate_limit(url)
+
+def process_round(season, round_num):
+    """Process a specific round in a season"""
+    logger.info(f"Processing season: {season}, round: {round_num}")
+
+    season_folder = Path(f"{season}")
+    create_folder_if_not_exists(season_folder)
+
+    # Fetch events data for the season
+    events_file = season_folder / "events.json"
+    if not events_file.exists():
+        logger.warning(f"Events file not found for season {season}. Skipping.")
+        return
+
+    with open(events_file, "r") as f:
+        events_data = json.load(f)
+
+    races = events_data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+    
+    # Find the specific race for the round
+    race = None
+    for r in races:
+        if r.get("round") == str(round_num):
+            race = r
+            break
+
+    if not race:
+        logger.warning(f"Round {round_num} not found for season {season}. Skipping.")
+        return
+
+    race_folder_name = get_race_folder_name(race)
+    race_folder = season_folder / race_folder_name
+    create_folder_if_not_exists(race_folder)
+
+    # Fetch round-level driver standings
+    round_standings = fetch_driver_standings(season, round_num)
+    if round_standings:
+        with open(race_folder / "driverPoints.json", "w") as f:
+            json.dump(round_standings, f, indent=2)
+            logger.info(
+                f"Saved round driver standings to {race_folder}/driverPoints.json"
+            )
+```
+
+### Usage
+
+```python
+from driver_points import process_round
+
+process_round(2024, 1)  # Fetch driver standings after round 1
+```
+
+## Constructor Standings (team_points.py)
+
+Location: `~/workspace/source/team_points.py`
+
+### ConstructorStandingsFetcher Class
+
+```python
+class ConstructorStandingsFetcher:
+    def __init__(self, base_dir="data"):
+        self.base_dir = Path(base_dir)
+        self.requests_this_hour = 0
+        self.hour_start_time = time.time()
+
+    def get_constructor_standings(self, season, round_num):
+        """Get constructor standings for a specific season and round"""
+        url = f"{BASE_URL}/{season}/{round_num}/constructorstandings.json"
+        return self.make_request(url)
+
+    def fetch_standings_by_round(self, season, round_num):
+        """Fetch constructor standings for a specific season and round"""
+        logger.info(
+            f"Fetching constructor standings for season {season}, round {round_num}"
+        )
+
+        # Get race information
+        race_info = self.get_race_info(season, round_num)
+
+        if not race_info:
+            logger.warning(f"No race found for season {season}, round {round_num}")
+            return
+
+        race_name = race_info.get("raceName", "").lower().replace(" ", "-")
+
+        # Create directories
+        season_dir = self.base_dir / str(season)
+        race_dir = season_dir / f"{race_name}"
+        os.makedirs(race_dir, exist_ok=True)
+
+        # Get constructor standings for this round
+        standings = self.get_constructor_standings(season, round_num)
+
+        if standings:
+            standings_path = race_dir / "teamPoints.json"
+            self.save_json(standings, standings_path)
+            logger.info(
+                f"Successfully saved constructor standings for {season} {race_name} (Round {round_num})"
+            )
+```
+
+### Usage
+
+```python
+from team_points import ConstructorStandingsFetcher
+
+fetcher = ConstructorStandingsFetcher(base_dir=".")
+fetcher.fetch_standings_by_round(2024, 1)
+```
+
+## Output Structure
+
+### driverPoints.json
+
+Stored at: `{year}/{race-name}/driverPoints.json`
+
+```json
+{
+  "MRData": {
+    "series": "f1",
+    "url": "https://api.jolpi.ca/ergast/f1/1950/5/driverstandings/",
+    "limit": "30",
+    "offset": "0",
+    "total": "72",
+    "StandingsTable": {
+      "season": "1950",
+      "round": "5",
+      "StandingsLists": [
+        {
+          "season": "1950",
+          "round": "5",
+          "DriverStandings": [
+            {
+              "position": "1",
+              "positionText": "1",
+              "points": "22",
+              "wins": "2",
+              "Driver": {
+                "driverId": "farina",
+                "givenName": "Nino",
+                "familyName": "Farina",
+                "dateOfBirth": "1906-10-30",
+                "nationality": "Italian"
+              },
+              "Constructors": [
+                {
+                  "constructorId": "alfa",
+                  "name": "Alfa Romeo",
+                  "nationality": "Swiss"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+### teamPoints.json
+
+Stored at: `{year}/{race-name}/teamPoints.json`
+
+```json
+{
+  "MRData": {
+    "series": "f1",
+    "url": "https://api.jolpi.ca/ergast/f1/1950/5/constructorstandings.json",
+    "limit": "30",
+    "offset": "0",
+    "total": "23",
+    "StandingsTable": {
+      "season": "1950",
+      "round": "5",
+      "StandingsLists": [
+        {
+          "season": "1950",
+          "round": "5",
+          "ConstructorStandings": [
+            {
+              "positionText": "-",
+              "points": "0",
+              "wins": "4",
+              "Constructor": {
+                "constructorId": "alfa",
+                "name": "Alfa Romeo",
+                "nationality": "Swiss"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Standings Data Fields
+
+### Driver Standings
+
+| Field | Description |
+|-------|-------------|
+| `position` | Current championship position |
+| `positionText` | Position as text |
+| `points` | Total points accumulated |
+| `wins` | Number of race wins |
+| `Driver` | Driver information |
+| `Constructors` | Teams the driver has raced for |
+
+### Constructor Standings
+
+| Field | Description |
+|-------|-------------|
+| `positionText` | Championship position |
+| `points` | Total points accumulated |
+| `wins` | Number of race wins |
+| `Constructor` | Team information |
+
+<Note>
+Standings are cumulative - they show the total points and wins up to and including the specified round.
+</Note>
+
+## Historical Context
+
+<Warning>
+The constructor championship wasn't officially recognized until 1958. Earlier years may show constructor data, but positions are often marked with "-".
+</Warning>
+
+### Points System Evolution
+
+The F1 points system has changed many times:
+
+| Period | 1st | 2nd | 3rd | Notes |
+|--------|-----|-----|-----|-------|
+| 1950-1959 | 8 | 6 | 4 | Point for fastest lap |
+| 1960-1990 | 9 | 6 | 4 | Various changes |
+| 1991-2002 | 10 | 6 | 4 | |
+| 2003-2009 | 10 | 8 | 6 | |
+| 2010-present | 25 | 18 | 15 | Current system |
+
+## Complete Season Example
+
+```python
+# Fetch both driver and constructor standings for entire season
+from driver_points import process_round
+from team_points import ConstructorStandingsFetcher
+
+season = 2024
+team_fetcher = ConstructorStandingsFetcher(base_dir=".")
+
+for round_num in range(1, 23):
+    # Fetch driver standings
+    process_round(season, round_num)
+    
+    # Fetch constructor standings
+    team_fetcher.fetch_standings_by_round(season, round_num)
+    
+    logger.info(f"Completed standings for round {round_num}")
+```
+
+## Related Scripts
+
+<CardGroup cols={2}>
+  <Card title="Race Results" icon="flag-checkered" href="/data-collection/race-results">
+    Results determine points awarded
+  </Card>
+  <Card title="Lap Times" icon="clock" href="/data-collection/lap-times">
+    Collect detailed timing data next
+  </Card>
+</CardGroup>

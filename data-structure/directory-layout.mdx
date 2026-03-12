@@ -1,0 +1,256 @@
+---
+title: Directory Layout
+description: Detailed breakdown of the F1 Stats Archive folder structure
+---
+
+This page documents the exact directory structure and file organization used throughout the archive.
+
+## Root Structure
+
+The archive root contains year directories from 1950 to present:
+
+```
+source/
+├── 1950/
+├── 1951/
+├── 1952/
+...
+├── 2024/
+├── 2025/
+├── 2026/
+└── README.md
+```
+
+Each year represents a Formula 1 season and follows the same internal structure.
+
+## Year Directory Structure
+
+Example: `2024/` directory
+
+```
+2024/
+├── events.json                    # Season calendar
+├── driverPoints.json              # Final driver standings
+├── teamPoints.json                # Final constructor standings
+├── bahrain-grand-prix/
+├── saudi-arabian-grand-prix/
+├── australian-grand-prix/
+├── japanese-grand-prix/
+├── chinese-grand-prix/            # Sprint weekend
+├── miami-grand-prix/              # Sprint weekend
+├── emilia-romagna-grand-prix/
+├── monaco-grand-prix/
+├── canadian-grand-prix/
+├── spanish-grand-prix/
+├── austrian-grand-prix/           # Sprint weekend
+├── british-grand-prix/
+├── hungarian-grand-prix/
+├── belgian-grand-prix/
+├── dutch-grand-prix/
+├── italian-grand-prix/
+├── azerbaijan-grand-prix/
+├── singapore-grand-prix/
+├── united-states-grand-prix/      # Sprint weekend
+├── mexico-city-grand-prix/
+├── são-paulo-grand-prix/          # Sprint weekend
+├── las-vegas-grand-prix/
+├── qatar-grand-prix/              # Sprint weekend
+└── abu-dhabi-grand-prix/
+```
+
+### Naming Conventions
+
+**Race Directory Names:**
+- All lowercase
+- Hyphens separate words
+- Full race name (e.g., `british-grand-prix`, not `silverstone`)
+- Special characters preserved in directory names (e.g., `são-paulo-grand-prix`)
+
+**File Names:**
+- Descriptive camelCase JSON files at season level (`driverPoints.json`)
+- Snake_case JSON files at race level (`event_info.json`)
+
+## Race Directory Structure
+
+### Standard Race Weekend
+
+A typical non-sprint race weekend contains 7 files:
+
+```
+australian-grand-prix/
+├── event_info.json        # Circuit info and session schedule
+├── quali_results.json     # Qualifying results (Q1, Q2, Q3)
+├── results.json           # Race results and points
+├── laptimes.json          # Lap-by-lap timing data
+├── pitstops.json          # Pit stop data
+├── driverPoints.json      # Driver standings after this race
+└── teamPoints.json        # Team standings after this race
+```
+
+### Sprint Race Weekend
+
+Sprint weekends include an additional file:
+
+```
+chinese-grand-prix/
+├── event_info.json
+├── quali_results.json
+├── results.json
+├── laptimes.json
+├── pitstops.json
+├── sprint_results.json    # Sprint race results
+├── driverPoints.json
+└── teamPoints.json
+```
+
+## File Availability by Era
+
+Not all files exist for every race, depending on the era:
+
+<Tabs>
+  <Tab title="1950-1995">
+    **Available Files:**
+    - `event_info.json`
+    - `quali_results.json`
+    - `results.json`
+    - `driverPoints.json`
+    - `teamPoints.json`
+    
+    **Not Available:**
+    - `laptimes.json` (lap timing not recorded)
+    - `pitstops.json` (pit data not recorded)
+    - `sprint_results.json` (sprints didn't exist)
+  </Tab>
+  
+  <Tab title="1996-2020">
+    **Available Files:**
+    - `event_info.json`
+    - `quali_results.json`
+    - `results.json`
+    - `laptimes.json` ✓
+    - `pitstops.json` ✓
+    - `driverPoints.json`
+    - `teamPoints.json`
+    
+    **Not Available:**
+    - `sprint_results.json` (sprints introduced in 2021)
+  </Tab>
+  
+  <Tab title="2021-Present">
+    **Available Files:**
+    - `event_info.json`
+    - `quali_results.json`
+    - `results.json`
+    - `laptimes.json`
+    - `pitstops.json`
+    - `sprint_results.json` (sprint weekends only)
+    - `driverPoints.json`
+    - `teamPoints.json`
+    
+    All data types available.
+  </Tab>
+</Tabs>
+
+## Season-Level Files
+
+### events.json
+
+Location: `{year}/events.json`
+
+Contains the complete race calendar for the season with:
+- All Grand Prix races in chronological order
+- Circuit information and locations
+- Session schedules (practice, qualifying, race)
+- Sprint weekend indicators
+
+### driverPoints.json
+
+Location: `{year}/driverPoints.json`
+
+Final driver championship standings showing:
+- Final positions after all races
+- Total points accumulated
+- Number of wins
+- Constructor affiliation
+
+### teamPoints.json
+
+Location: `{year}/teamPoints.json`
+
+Final constructor championship standings showing:
+- Final team positions
+- Total constructor points
+- Number of wins
+
+## Navigating the Structure
+
+### Finding a Specific Race
+
+1. Identify the year: `2024/`
+2. Find the race directory: `australian-grand-prix/`
+3. Access the data file: `results.json`
+
+Full path: `source/2024/australian-grand-prix/results.json`
+
+### Finding All Races in a Season
+
+List all directories in a year folder:
+```bash
+ls source/2024/
+```
+
+Or read the season calendar:
+```bash
+cat source/2024/events.json
+```
+
+### Finding Sprint Races
+
+Sprint races can be identified by:
+1. Checking for `sprint_results.json` in the race directory
+2. Looking for `Sprint` and `SprintQualifying` fields in `events.json`
+
+<Info>
+  **Sprint Weekend Schedule**
+  
+  Sprint weekends have a different format:
+  - Friday: FP1, Sprint Qualifying
+  - Saturday: Sprint Race, Qualifying
+  - Sunday: Grand Prix
+</Info>
+
+## Historical Notes
+
+### Race Name Changes
+
+Some races have changed names over time:
+- **Bahrain**: Always `bahrain-grand-prix`
+- **USA**: `united-states-grand-prix` (Circuit of the Americas)
+- **Brazil**: Changed from `brazilian-grand-prix` to `são-paulo-grand-prix` in 2021
+
+### Calendar Evolution
+
+The number of races per season has grown significantly:
+- 1950s: 7-8 races per season
+- 1990s: 16-17 races per season
+- 2020s: 20-24 races per season
+
+## Best Practices
+
+<Warning>
+  **Always check if a file exists before attempting to read it**
+  
+  Not all races have all data files, especially in historical seasons.
+</Warning>
+
+<Tip>
+  **Use consistent race identifiers**
+  
+  Race directory names are more reliable than race numbers, which can change due to cancellations.
+</Tip>
+
+## Next Steps
+
+<Card title="JSON Schemas" icon="code" href="/data-structure/json-schemas">
+  Learn about the structure and fields in each JSON file
+</Card>

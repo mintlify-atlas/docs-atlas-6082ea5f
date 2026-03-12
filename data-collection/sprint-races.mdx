@@ -1,0 +1,373 @@
+---
+title: Sprint Races
+description: Collecting sprint race results using sprint_results.py
+---
+
+The `sprint_results.py` script fetches results from F1 sprint races, a shorter race format introduced in 2021 that awards points and determines grid positions.
+
+<Note>
+Sprint races were introduced in 2021 and are only held at select events. Not all races have sprint data.
+</Note>
+
+## Script Overview
+
+Location: `~/workspace/source/sprint_results.py`
+
+The `SprintResultsFetcher` class:
+1. Checks if a race weekend includes a sprint event
+2. Fetches sprint race results
+3. Saves data to the race directory
+4. Handles races without sprint events gracefully
+
+## API Endpoint
+
+```python
+url = f"https://api.jolpi.ca/ergast/f1/{season}/{round_num}/sprint.json"
+```
+
+## Sprint Race Format
+
+Sprint races are shorter races (typically 100km) held on Saturday:
+
+- **2021-2022**: Top 3 finishers scored points (3-2-1)
+- **2023-present**: Top 8 finishers score points (8-7-6-5-4-3-2-1)
+
+Sprint race results determine the starting grid for Sunday's Grand Prix.
+
+## SprintResultsFetcher Class
+
+### Initialization
+
+```python
+class SprintResultsFetcher:
+    def __init__(self, base_dir="."):
+        self.base_dir = Path(base_dir)
+        self.base_url = "https://api.jolpi.ca/ergast/f1"
+        # Rate limits
+        self.burst_limit = 4  # requests per second
+        self.last_request_time = 0
+```
+
+### Check for Sprint Event
+
+```python
+def has_sprint(self, race):
+    """Check if a race has a sprint event"""
+    return "Sprint" in race
+```
+
+The race metadata from the events API includes a `Sprint` field if the weekend has a sprint race.
+
+### Get Race Information
+
+```python
+def get_race_info(self, season, round_num):
+    """Get race information for the specified season and round"""
+    events_file = self.base_dir / str(season) / "events.json"
+
+    if not events_file.exists():
+        logger.warning(f"Events file not found for season {season}")
+        # Try to fetch from API
+        url = f"{self.base_url}/{season}/races.json"
+        data = self.make_request(url)
+        if (
+            data
+            and "MRData" in data
+            and "RaceTable" in data["MRData"]
+            and "Races" in data["MRData"]["RaceTable"]
+        ):
+            races = data["MRData"]["RaceTable"]["Races"]
+            for race in races:
+                if race["round"] == str(round_num):
+                    return race
+        return None
+
+    try:
+        with open(events_file, "r") as f:
+            data = json.load(f)
+            races = data["MRData"]["RaceTable"]["Races"]
+            for race in races:
+                if race["round"] == str(round_num):
+                    return race
+    except Exception as e:
+        logger.error(f"Error reading events file: {e}")
+        return None
+```
+
+### Fetch Sprint Results
+
+```python
+def get_sprint_results(self, season, round_num):
+    """Get sprint results for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}/sprint.json"
+    return self.make_request(url)
+
+def fetch_sprint_for_round(self, season, round_num):
+    """Fetch sprint results for a specific season and round"""
+    logger.info(f"Fetching sprint results for season {season}, round {round_num}")
+
+    # Create season directory
+    season_dir = self.base_dir / str(season)
+    os.makedirs(season_dir, exist_ok=True)
+
+    # Get race information
+    race = self.get_race_info(season, round_num)
+
+    if not race:
+        logger.warning(
+            f"Race information not found for season {season}, round {round_num}"
+        )
+        return False
+
+    race_name = self.get_race_folder_name(race)
+
+    # Check if race has a sprint
+    if not self.has_sprint(race):
+        logger.warning(
+            f"No sprint for {race_name} (Round {round_num}) in season {season}"
+        )
+        return False
+
+    logger.info(f"Found sprint race: {race_name} (Round {round_num})")
+
+    # Create race directory
+    race_dir = season_dir / race_name
+    os.makedirs(race_dir, exist_ok=True)
+
+    # Get sprint results
+    sprint_results = self.get_sprint_results(season, round_num)
+
+    if sprint_results:
+        sprint_results_path = race_dir / "sprint_results.json"
+        return self.save_json(sprint_results, sprint_results_path)
+    else:
+        logger.warning(
+            f"No sprint results found for {race_name} (Round {round_num})"
+        )
+        return False
+```
+
+## Output Structure
+
+Stored at: `{year}/{race-name}/sprint_results.json`
+
+```json
+{
+  "MRData": {
+    "series": "f1",
+    "url": "https://api.jolpi.ca/ergast/f1/2021/10/sprint.json",
+    "limit": "30",
+    "offset": "0",
+    "total": "20",
+    "RaceTable": {
+      "season": "2021",
+      "round": "10",
+      "Races": [
+        {
+          "season": "2021",
+          "round": "10",
+          "raceName": "British Grand Prix",
+          "Circuit": {
+            "circuitId": "silverstone",
+            "circuitName": "Silverstone Circuit",
+            "Location": {
+              "lat": "52.0786",
+              "long": "-1.01694",
+              "locality": "Silverstone",
+              "country": "UK"
+            }
+          },
+          "date": "2021-07-18",
+          "time": "14:00:00Z",
+          "SprintResults": [
+            {
+              "number": "33",
+              "position": "1",
+              "positionText": "1",
+              "points": "3",
+              "Driver": {
+                "driverId": "max_verstappen",
+                "permanentNumber": "33",
+                "code": "VER",
+                "givenName": "Max",
+                "familyName": "Verstappen",
+                "dateOfBirth": "1997-09-30",
+                "nationality": "Dutch"
+              },
+              "Constructor": {
+                "constructorId": "red_bull",
+                "name": "Red Bull",
+                "nationality": "Austrian"
+              },
+              "grid": "2",
+              "laps": "17",
+              "status": "Finished",
+              "Time": {
+                "millis": "1538426",
+                "time": "25:38.426"
+              },
+              "FastestLap": {
+                "lap": "14",
+                "Time": {
+                  "time": "1:30.013"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+## Sprint Results Data Fields
+
+| Field | Description |
+|-------|-------------|
+| `number` | Driver's car number |
+| `position` | Finishing position in sprint |
+| `positionText` | Position as text |
+| `points` | Points awarded (varies by year) |
+| `Driver` | Driver information |
+| `Constructor` | Team information |
+| `grid` | Starting position for sprint |
+| `laps` | Number of laps completed |
+| `status` | Finish status |
+| `Time` | Finishing time |
+| `FastestLap` | Fastest lap in the sprint |
+
+## Usage Example
+
+### Single Sprint Race
+
+```python
+from sprint_results import SprintResultsFetcher
+
+fetcher = SprintResultsFetcher(base_dir=".")
+success = fetcher.fetch_sprint_for_round(2021, 10)  # British GP
+
+if success:
+    print("Sprint results fetched successfully")
+```
+
+### Check All Rounds for Sprints
+
+```python
+fetcher = SprintResultsFetcher(base_dir=".")
+season = 2024
+
+for round_num in range(1, 25):
+    success = fetcher.fetch_sprint_for_round(season, round_num)
+    if success:
+        logger.info(f"Found sprint data for round {round_num}")
+```
+
+### Find Sprint Weekends
+
+```python
+import json
+from pathlib import Path
+
+season = 2024
+events_file = Path(str(season)) / "events.json"
+
+with open(events_file) as f:
+    data = json.load(f)
+    races = data["MRData"]["RaceTable"]["Races"]
+    
+    sprint_races = [r for r in races if "Sprint" in r]
+    print(f"Found {len(sprint_races)} sprint races in {season}")
+    
+    for race in sprint_races:
+        print(f"Round {race['round']}: {race['raceName']}")
+```
+
+## Sprint Race History
+
+### Sprint Weekends by Year
+
+| Season | Number of Sprints | Notable Races |
+|--------|------------------|---------------|
+| 2021 | 3 | British, Italian, São Paulo |
+| 2022 | 3 | Emilia Romagna, Austrian, São Paulo |
+| 2023 | 6 | Multiple events |
+| 2024 | 6 | Multiple events |
+
+<Note>
+The number and selection of sprint race weekends varies each season. Always check the events data to identify which rounds include sprints.
+</Note>
+
+## Points Distribution
+
+### 2021-2022
+
+```python
+points = {
+    1: 3,
+    2: 2,
+    3: 1
+}
+```
+
+### 2023-Present
+
+```python
+points = {
+    1: 8,
+    2: 7,
+    3: 6,
+    4: 5,
+    5: 4,
+    6: 3,
+    7: 2,
+    8: 1
+}
+```
+
+## Analysis Example
+
+```python
+import json
+
+# Compare sprint and race results
+race_dir = "2021/british-grand-prix"
+
+with open(f"{race_dir}/sprint_results.json") as f:
+    sprint = json.load(f)
+    sprint_winner = sprint["MRData"]["RaceTable"]["Races"][0]["SprintResults"][0]
+
+with open(f"{race_dir}/results.json") as f:
+    race = json.load(f)
+    race_winner = race["MRData"]["RaceTable"]["Races"][0]["Results"][0]
+
+print(f"Sprint winner: {sprint_winner['Driver']['familyName']}")
+print(f"Race winner: {race_winner['Driver']['familyName']}")
+```
+
+## Logging
+
+```python
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("sprint_results_fetch.log"),
+        logging.StreamHandler()
+    ]
+)
+```
+
+## Related Scripts
+
+<CardGroup cols={2}>
+  <Card title="Events" icon="calendar" href="/data-collection/events">
+    Check which races have sprint events
+  </Card>
+  <Card title="Race Results" icon="flag-checkered" href="/data-collection/race-results">
+    Compare sprint vs. race outcomes
+  </Card>
+  <Card title="Qualifying" icon="stopwatch" href="/data-collection/qualifying">
+    Qualifying sets sprint grid (reverse order)
+  </Card>
+</CardGroup>

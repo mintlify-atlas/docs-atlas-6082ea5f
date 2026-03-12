@@ -1,0 +1,287 @@
+---
+title: "Installation"
+description: "Install and configure F1 Stats Archive"
+---
+
+This guide covers everything you need to install and configure F1 Stats Archive on your system.
+
+## System Requirements
+
+### Python Version
+F1 Stats Archive requires Python 3.7 or higher. The project uses modern Python features including:
+- `pathlib` for cross-platform file paths
+- Type hints and f-strings
+- Context managers for file operations
+
+Verify your Python version:
+
+```bash
+python --version
+# or
+python3 --version
+```
+
+### Operating System
+The project is compatible with:
+- Linux (Ubuntu, Debian, Fedora, etc.)
+- macOS
+- Windows 10/11
+
+## Installation Methods
+
+### Standard Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone <your-repo-url>
+    cd f1-stats-archive
+    ```
+  </Step>
+
+  <Step title="Create a virtual environment (recommended)">
+    Using a virtual environment keeps your project dependencies isolated:
+
+    <CodeGroup>
+      ```bash Linux/macOS
+      python3 -m venv venv
+      source venv/bin/activate
+      ```
+
+      ```bash Windows
+      python -m venv venv
+      venv\Scripts\activate
+      ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Install dependencies">
+    Install the required packages from `requirements.txt`:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    The only dependency is:
+    - `requests` - For making HTTP requests to the Ergast API
+  </Step>
+
+  <Step title="Verify installation">
+    Test that everything is working by importing the modules:
+
+    ```python
+    python -c "import requests; print('Installation successful!')"
+    ```
+  </Step>
+</Steps>
+
+## Configuration
+
+### API Settings
+
+The Ergast API base URL is configured in each script. By default, all scripts use:
+
+```python
+BASE_URL = "https://api.jolpi.ca/ergast/f1"
+```
+
+<Note>
+  The Ergast API is currently hosted at `api.jolpi.ca/ergast`. The original `ergast.com` domain is no longer operational.
+</Note>
+
+### Rate Limiting
+
+All scripts include built-in rate limiting to comply with API restrictions:
+
+- **Burst limit**: 4 requests per second
+- **Sustained limit**: 500 requests per hour
+
+The rate limiting is implemented in each fetcher class:
+
+```python
+class RaceResultsFetcher:
+    def __init__(self, base_dir="."):
+        self.base_dir = Path(base_dir)
+        self.base_url = "https://api.jolpi.ca/ergast/f1"
+        self.burst_limit = 4  # requests per second
+        self.last_request_time = 0
+
+    def make_request(self, url):
+        current_time = time.time()
+        time_since_last_request = current_time - self.last_request_time
+
+        if time_since_last_request < (1 / self.burst_limit):
+            sleep_time = (1 / self.burst_limit) - time_since_last_request
+            time.sleep(sleep_time)
+
+        response = requests.get(url)
+        self.last_request_time = time.time()
+
+        if response.status_code == 429:
+            logger.warning("Rate limit exceeded. Waiting 30 seconds...")
+            time.sleep(30)
+            return self.make_request(url)
+
+        return response.json()
+```
+
+### Directory Structure
+
+By default, all scripts save data to the current working directory. You can customize the output location:
+
+```python
+# Default - saves to current directory
+fetcher = RaceResultsFetcher(base_dir=".")
+
+# Custom location
+fetcher = RaceResultsFetcher(base_dir="/path/to/data")
+```
+
+The generated directory structure:
+
+```
+base_dir/
+├── 2026/
+│   ├── events.json
+│   ├── australian-grand-prix/
+│   │   ├── event_info.json
+│   │   ├── results.json
+│   │   ├── quali_results.json
+│   │   ├── driverPoints.json
+│   │   └── laptimes.json
+│   └── bahrain-grand-prix/
+│       └── ...
+└── 2025/
+    └── ...
+```
+
+### Logging Configuration
+
+Each script includes comprehensive logging to help you track progress and debug issues:
+
+```python
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("race_results_fetch.log"),
+        logging.StreamHandler(),
+    ],
+)
+```
+
+Log files are created in the current directory:
+- `race_results_fetch.log` - Race results fetching
+- `qualifying_results_fetch.log` - Qualifying results
+- `driver_standings_fetch.log` - Driver points
+- `laptimes_fetch.log` - Lap timing data
+
+You can adjust the log level in any script:
+
+```python
+logging.basicConfig(level=logging.DEBUG)  # More verbose
+logging.basicConfig(level=logging.WARNING)  # Less verbose
+```
+
+## Customizing Season and Round Selection
+
+Each script is configured to fetch specific seasons and rounds. Modify the `__main__` section of each script:
+
+### Events Script
+
+```python
+def main():
+    base_dir = "."
+    start_year = 2024  # Change start year
+    end_year = 2026    # Change end year
+
+    for year in range(start_year, end_year + 1):
+        # Process each year...
+```
+
+### Results, Qualifying, and Points Scripts
+
+```python
+if __name__ == "__main__":
+    fetcher = RaceResultsFetcher(base_dir=".")
+    
+    # Fetch specific rounds
+    fetcher.fetch_round(2026, 1)
+    fetcher.fetch_round(2026, 2)
+    fetcher.fetch_round(2026, 3)
+    
+    # Or use a loop
+    for round_num in range(1, 24):
+        fetcher.fetch_round(2026, round_num)
+```
+
+## Verification
+
+After installation, verify everything works by running the events script:
+
+```bash
+python events.py
+```
+
+You should see output like:
+
+```
+Created directory: 2026
+Processed: 2026 - Australian Grand Prix
+Processed: 2026 - Bahrain Grand Prix
+Done! All races have been processed and folders created.
+```
+
+<Warning>
+  Always run `events.py` first to create the directory structure and fetch event data. Other scripts depend on the `events.json` file to determine race names and folder locations.
+</Warning>
+
+## Troubleshooting
+
+### Import Errors
+
+If you see `ModuleNotFoundError: No module named 'requests'`:
+
+```bash
+pip install requests
+```
+
+### Rate Limit Errors
+
+If you see frequent rate limit warnings:
+- The scripts will automatically retry after 30 seconds
+- Consider increasing the delay between requests
+- Avoid running multiple scripts simultaneously
+
+### Permission Errors
+
+If you encounter permission errors when creating directories:
+
+```bash
+# Run with appropriate permissions
+sudo python events.py  # Linux/macOS
+
+# Or change the base_dir to a writable location
+fetcher = RaceResultsFetcher(base_dir="/home/user/f1-data")
+```
+
+### Missing Data
+
+If race folders are created but contain no JSON files:
+- Check that the race has occurred (future races have no data)
+- Verify your internet connection
+- Check the log files for error messages
+- The Ergast API may not have data for very recent races yet
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Learn how to fetch your first F1 race data
+  </Card>
+  <Card title="API Reference" icon="book" href="/api-reference">
+    Explore all available scripts and methods
+  </Card>
+</CardGroup>

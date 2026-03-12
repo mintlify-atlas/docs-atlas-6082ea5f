@@ -1,0 +1,156 @@
+---
+title: "quali_results.py"
+description: "Fetch Formula 1 qualifying session results"
+---
+
+# quali_results.py
+
+The `quali_results.py` script fetches qualifying session results for Formula 1 races. It retrieves grid positions and qualifying lap times from Q1, Q2, and Q3 sessions.
+
+## Overview
+
+This script uses the `QualifyingResultsFetcher` class to:
+- Fetch qualifying results from the Ergast API
+- Handle the modern 3-part qualifying format (Q1, Q2, Q3)
+- Implement rate limiting and error handling
+- Save results to structured JSON files
+
+## QualifyingResultsFetcher Class
+
+### Initialization
+
+```python quali_results.py
+class QualifyingResultsFetcher:
+    def __init__(self, base_dir="."):
+        self.base_dir = Path(base_dir)
+        self.base_url = "https://api.jolpi.ca/ergast/f1"
+        self.burst_limit = 4  # requests per second
+        self.last_request_time = 0
+```
+
+### Key Methods
+
+#### get_qualifying_results()
+
+```python quali_results.py
+def get_qualifying_results(self, season, round_num):
+    """Get qualifying results for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}/qualifying.json"
+    return self.make_request(url)
+```
+
+#### fetch_round()
+
+```python quali_results.py
+def fetch_round(self, season, round_num):
+    """Fetch qualifying results for a specific season and round"""
+    logger.info(f"Fetching qualifying results for season {season}, round {round_num}")
+    
+    # Create season directory
+    season_dir = self.base_dir / str(season)
+    os.makedirs(season_dir, exist_ok=True)
+    
+    # Get race information
+    race_info = self.get_race_info(season, round_num)
+    
+    if not race_info:
+        logger.warning(f"No race found for season {season}, round {round_num}")
+        return
+    
+    race_name = self.get_race_folder_name(race_info)
+    
+    # Create race directory
+    race_dir = season_dir / race_name
+    os.makedirs(race_dir, exist_ok=True)
+    
+    # Get qualifying results
+    qualifying_results = self.get_qualifying_results(season, round_num)
+    
+    if qualifying_results:
+        qualifying_results_path = race_dir / "quali_results.json"
+        self.save_json(qualifying_results, qualifying_results_path)
+        logger.info(f"Successfully fetched qualifying results for {season} {race_name}")
+    else:
+        logger.warning(f"No qualifying results found for {season} {race_name}")
+```
+
+## Usage
+
+### Basic Usage
+
+```python
+from quali_results import QualifyingResultsFetcher
+
+fetcher = QualifyingResultsFetcher(base_dir=".")
+
+# Fetch qualifying results for 2024 Bahrain GP
+fetcher.fetch_round(2024, 1)
+```
+
+### Fetch Multiple Rounds
+
+```python
+fetcher = QualifyingResultsFetcher()
+
+for round_num in range(1, 25):
+    fetcher.fetch_round(2024, round_num)
+```
+
+## API Endpoint
+
+```
+GET https://api.jolpi.ca/ergast/f1/{season}/{round}/qualifying.json
+```
+
+## Output Structure
+
+Qualifying results are saved to: `{year}/{race-slug}/quali_results.json`
+
+```json
+{
+  "MRData": {
+    "RaceTable": {
+      "season": "2024",
+      "round": "1",
+      "Races": [
+        {
+          "raceName": "Bahrain Grand Prix",
+          "QualifyingResults": [
+            {
+              "number": "1",
+              "position": "1",
+              "Driver": {
+                "driverId": "verstappen",
+                "code": "VER",
+                "givenName": "Max",
+                "familyName": "Verstappen"
+              },
+              "Constructor": {
+                "constructorId": "red_bull",
+                "name": "Red Bull"
+              },
+              "Q1": "1:30.123",
+              "Q2": "1:29.456",
+              "Q3": "1:29.179"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+```
+
+<Note>
+  Qualifying format changed to Q1/Q2/Q3 in 2006. Earlier seasons have different formats.
+</Note>
+
+## Logging
+
+Log file: `qualifying_results_fetch.log`
+
+## See Also
+
+- [Qualifying Data Collection](/data-collection/qualifying)
+- [JSON Schemas](/data-structure/json-schemas)
+- [Rate Limiting](/api/rate-limiting)

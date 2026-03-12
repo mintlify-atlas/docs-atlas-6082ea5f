@@ -1,0 +1,266 @@
+---
+title: Automation
+description: Automated data collection using GitHub Actions
+---
+
+## Overview
+
+The F1 Stats Archive uses GitHub Actions to automatically update race data on a scheduled basis. This ensures the archive stays current with the latest Formula 1 statistics from the Ergast API.
+
+## GitHub Actions Workflow
+
+The automation is configured in `.github/workflows/run.yml`:
+
+```yaml
+name: Update Stats
+
+on:
+  schedule:
+    - cron: '59 23 26 10 *'  # Run every Monday at midnight UTC
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  update-team-points:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run
+        run: |
+          python driver_points.py
+          python events.py
+          python laptimes.py
+          python pitstops.py
+          python quali_results.py
+          python results.py
+          python sprint_results.py
+          python team_points.py
+
+      - name: Commit and push if changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Update team points data" && git push)
+```
+
+## How It Works
+
+### 1. Scheduled Execution
+
+The workflow runs automatically based on the cron schedule:
+
+```yaml
+schedule:
+  - cron: '59 23 26 10 *'  # Custom schedule
+```
+
+<Note>
+The cron expression can be modified to run at different intervals. For example, `0 0 * * 1` would run every Monday at midnight UTC.
+</Note>
+
+### 2. Data Collection Scripts
+
+The workflow executes all Python scripts sequentially:
+
+- `driver_points.py` - Fetches driver championship standings
+- `events.py` - Retrieves race schedule and event information
+- `laptimes.py` - Collects all lap times for races
+- `pitstops.py` - Gathers pit stop data
+- `quali_results.py` - Gets qualifying session results
+- `results.py` - Fetches race results
+- `sprint_results.py` - Collects sprint race results
+- `team_points.py` - Retrieves constructor championship standings
+
+Each script:
+- Respects Ergast API rate limits
+- Creates the appropriate directory structure
+- Saves data as JSON files
+- Handles errors and retries gracefully
+
+### 3. Automatic Commits
+
+If new data is fetched, the workflow automatically:
+
+1. Configures Git with the GitHub Actions bot identity
+2. Stages all changes
+3. Creates a commit with the message "Update team points data"
+4. Pushes changes back to the repository
+
+```bash
+git config --local user.email "github-actions[bot]@users.noreply.github.com"
+git config --local user.name "github-actions[bot]"
+git add .
+git diff --quiet && git diff --staged --quiet || (git commit -m "Update team points data" && git push)
+```
+
+<Note>
+The workflow only creates a commit if there are actual changes to the data.
+</Note>
+
+## Manual Triggering
+
+You can manually trigger the workflow using the GitHub UI:
+
+1. Go to your repository on GitHub
+2. Click the **Actions** tab
+3. Select the **Update Stats** workflow
+4. Click **Run workflow**
+5. Choose the branch and click **Run workflow**
+
+Alternatively, use the GitHub CLI:
+
+```bash
+gh workflow run run.yml
+```
+
+## Configuring for Your Own Use
+
+### 1. Fork the Repository
+
+```bash
+gh repo fork your-username/f1-stats-archive
+```
+
+### 2. Adjust the Schedule
+
+Edit `.github/workflows/run.yml` to change when data updates occur:
+
+```yaml
+schedule:
+  - cron: '0 2 * * *'  # Run daily at 2 AM UTC
+  # - cron: '0 */6 * * *'  # Run every 6 hours
+  # - cron: '0 0 * * 0'  # Run weekly on Sundays
+```
+
+### 3. Customize Data Collection
+
+Modify the scripts to collect specific data:
+
+**Example: Only collect data for recent seasons**
+
+Edit the year range in each script:
+
+```python
+# In events.py, results.py, etc.
+start_year = 2020  # Change from 1950
+end_year = 2024
+```
+
+**Example: Focus on specific race rounds**
+
+```python
+# In driver_points.py
+if __name__ == "__main__":
+    # Only process specific rounds
+    for round_num in range(1, 24):  # All rounds
+        process_round(2024, round_num)
+```
+
+### 4. Set Up Repository Permissions
+
+Ensure GitHub Actions has permission to commit:
+
+1. Go to **Settings** > **Actions** > **General**
+2. Scroll to **Workflow permissions**
+3. Select **Read and write permissions**
+4. Check **Allow GitHub Actions to create and approve pull requests**
+5. Click **Save**
+
+<Warning>
+Without write permissions, the workflow can fetch data but won't be able to commit changes back to the repository.
+</Warning>
+
+## Monitoring Workflow Runs
+
+### View Run History
+
+Check the status of past workflow runs:
+
+```bash
+gh run list --workflow=run.yml
+```
+
+### View Run Logs
+
+```bash
+gh run view <run-id> --log
+```
+
+### Check for Failures
+
+The workflow may fail if:
+- The Ergast API is unavailable
+- Rate limits are exceeded
+- Network connectivity issues occur
+- Data format changes unexpectedly
+
+Check the Actions tab on GitHub for detailed error logs.
+
+## Best Practices
+
+### Optimize for Rate Limits
+
+If you're collecting large amounts of data:
+
+```python
+# Increase delays between requests
+time.sleep(0.5)  # Instead of 0.25 seconds
+```
+
+### Enable Notifications
+
+Get notified when workflows fail:
+
+1. Go to your GitHub notification settings
+2. Enable **Actions** notifications
+3. Choose email or web notifications
+
+### Use Workflow Artifacts
+
+Store logs or intermediate data:
+
+```yaml
+- name: Upload logs
+  if: always()
+  uses: actions/upload-artifact@v3
+  with:
+    name: fetch-logs
+    path: '*.log'
+```
+
+## Troubleshooting
+
+### Workflow Not Running on Schedule
+
+- Verify the cron syntax is correct
+- Ensure the workflow file is in the default branch
+- Check that Actions are enabled for your repository
+
+### Commits Not Pushing
+
+- Verify repository permissions (see setup section)
+- Check for branch protection rules that might block automated commits
+- Ensure the GitHub Actions bot has write access
+
+### Rate Limit Errors
+
+If you see 429 errors:
+
+- Reduce the frequency of scheduled runs
+- Increase delays in the Python scripts
+- Focus on collecting only recent data
+
+See the [Rate Limiting](/usage/rate-limiting) documentation for more details.

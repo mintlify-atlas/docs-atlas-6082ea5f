@@ -1,0 +1,575 @@
+---
+title: "Data Fetching"
+description: "Common data fetching utilities and patterns used across the F1 Stats Archive"
+---
+
+## Overview
+
+All data fetchers in the F1 Stats Archive follow consistent patterns for making API requests, handling errors, parsing JSON responses, and saving data to disk. This page documents the common utilities and best practices.
+
+## Core Components
+
+### Base URL Configuration
+
+All scripts use the Ergast API hosted at jolpi.ca:
+
+```python
+BASE_URL = "https://api.jolpi.ca/ergast/f1"
+```
+
+### Fetcher Class Structure
+
+Most scripts follow a class-based architecture:
+
+```python
+class RaceResultsFetcher:
+    def __init__(self, base_dir="."):
+        self.base_dir = Path(base_dir)
+        self.base_url = "https://api.jolpi.ca/ergast/f1"
+        # Rate limits
+        self.burst_limit = 4  # requests per second
+        self.last_request_time = 0
+```
+
+From `results.py:20-26`
+
+## Making API Requests
+
+### Standard Request Method
+
+The `make_request()` method is the core pattern used across all fetchers:
+
+```python
+def make_request(self, url):
+    """Make a request to the API with rate limiting"""
+    # Ensure we don't exceed burst limit
+    current_time = time.time()
+    time_since_last_request = current_time - self.last_request_time
+    
+    if time_since_last_request < (1 / self.burst_limit):
+        sleep_time = (1 / self.burst_limit) - time_since_last_request
+        logger.debug(f"Rate limiting: sleeping for {sleep_time:.2f} seconds")
+        time.sleep(sleep_time)
+    
+    logger.debug(f"Making request to: {url}")
+    response = requests.get(url)
+    self.last_request_time = time.time()
+    
+    if response.status_code == 429:
+        logger.warning("Rate limit exceeded. Waiting 30 seconds before retrying.")
+        time.sleep(30)
+        return self.make_request(url)
+    
+    if response.status_code != 200:
+        logger.error(
+            f"Error fetching data: {response.status_code} - {response.text}"
+        )
+        return None
+    
+    return response.json()
+```
+
+From `sprint_results.py:32-58`
+
+<Note>
+This method combines rate limiting, error handling, automatic retries, and JSON parsing in a single reusable utility.
+</Note>
+
+### Enhanced Request Method with Exception Handling
+
+```python
+def make_request(self, url):
+    """Make a request to the API with rate limiting"""
+    self.check_rate_limits()
+    
+    try:
+        response = requests.get(url)
+        self.requests_this_hour += 1
+        
+        if response.status_code == 429:
+            logger.error(
+                "Rate limit exceeded despite precautions. Waiting 30 seconds."
+            )
+            time.sleep(30)
+            return self.make_request(url)  # Retry after waiting
+        
+        if response.status_code != 200:
+            logger.error(
+                f"Error fetching data: {response.status_code} - {response.text}"
+            )
+            return None
+        
+        return response.json()
+    
+    except Exception as e:
+        logger.error(f"Exception during request: {str(e)}")
+        return None
+```
+
+From `team_points.py:61-86`
+
+### Function-Based Request Pattern
+
+For simpler scripts without classes:
+
+```python
+def fetch_with_rate_limit(url):
+    """Fetch data with rate limiting"""
+    logger.info(f"Fetching: {url}")
+    time.sleep(REQUEST_DELAY)  # Respect rate limit
+    response = requests.get(url)
+    
+    if response.status_code == 429:
+        logger.warning("Rate limit exceeded. Waiting 30 seconds before retrying...")
+        time.sleep(30)
+        return fetch_with_rate_limit(url)
+    
+    if response.status_code != 200:
+        logger.error(f"Error fetching {url}: {response.status_code} - {response.text}")
+        return None
+    
+    return response.json()
+```
+
+From `driver_points.py:38-53`
+
+## Common API Endpoints
+
+### Get Race Information
+
+```python
+def get_race_info(self, season, round_num):
+    """Get race information for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}.json"
+    data = self.make_request(url)
+    
+    if not data:
+        return None
+    
+    races = data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+    if races:
+        return races[0]
+    return None
+```
+
+From `results.py:60-71`
+
+### Get Race Results
+
+```python
+def get_race_results(self, season, round_num):
+    """Get race results for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}/results.json"
+    return self.make_request(url)
+```
+
+From `results.py:73-76`
+
+### Get Qualifying Results
+
+```python
+def get_qualifying_results(self, season, round_num):
+    """Get qualifying results for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}/qualifying.json"
+    return self.make_request(url)
+```
+
+From `quali_results.py:77-80`
+
+### Get Sprint Results
+
+```python
+def get_sprint_results(self, season, round_num):
+    """Get sprint results for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}/sprint.json"
+    return self.make_request(url)
+```
+
+From `sprint_results.py:107-110`
+
+### Get Constructor Standings
+
+```python
+def get_constructor_standings(self, season, round_num):
+    """Get constructor standings for a specific season and round"""
+    url = f"{BASE_URL}/{season}/{round_num}/constructorstandings.json"
+    return self.make_request(url)
+```
+
+From `team_points.py:101-104`
+
+### Get Driver Standings
+
+```python
+def fetch_driver_standings(season, round_num):
+    """Fetch driver standings for a specific round in a season"""
+    url = f"{BASE_URL}/{season}/{round_num}/driverstandings/"
+    return fetch_with_rate_limit(url)
+```
+
+From `driver_points.py:56-59`
+
+## Pagination Handling
+
+### Fetching Large Datasets
+
+For endpoints with large amounts of data (like lap times and pitstops), use pagination:
+
+```python
+def fetch_laptimes(year, round_num):
+    """Fetch all lap times for a specific race with pagination."""
+    all_data = None
+    offset = 0
+    total_records = None
+    
+    while total_records is None or offset < total_records:
+        url = f"{BASE_URL}/{year}/{round_num}/laps.json?limit={LIMIT}&offset={offset}"
+        logger.info(f"Fetching data from: {url}")
+        
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Initialize all_data with the first response
+            if all_data is None:
+                all_data = data
+                total_records = int(data["MRData"]["total"])
+                logger.info(f"Total records to fetch: {total_records}")
+            else:
+                # Append new lap data to existing data
+                if "Laps" in data["MRData"]["RaceTable"]["Races"][0]:
+                    all_data["MRData"]["RaceTable"]["Races"][0]["Laps"].extend(
+                        data["MRData"]["RaceTable"]["Races"][0]["Laps"]
+                    )
+            
+            offset += LIMIT
+            
+            # Respect rate limits
+            time.sleep(1 / RATE_LIMIT_BURST)
+        
+        except requests.exceptions.RequestException as e:
+            if hasattr(e.response, "status_code") and e.response.status_code == 429:
+                logger.warning("Rate limit exceeded. Waiting for 60 seconds...")
+                time.sleep(60)
+                continue
+            logger.error(f"Error fetching data: {e}")
+            return None
+    
+    return all_data
+```
+
+From `laptimes.py:23-63`
+
+### Pitstops Pagination
+
+```python
+def fetch_pitstops_for_race(self):
+    """Fetch all pitstops for the specified race using pagination"""
+    limit = 100  # Maximum number of results per request
+    offset = 0
+    all_pitstops = []
+    total_pitstops = None
+    
+    # Initial request
+    url = f"{self.base_url}/{self.season}/{self.round_num}/pitstops.json?limit={limit}&offset={offset}"
+    response_data = self.make_request(url)
+    
+    if not response_data:
+        logger.error(
+            f"Failed to fetch pitstops for {self.season} round {self.round_num}"
+        )
+        return None
+    
+    # Extract data from the response
+    race_data = response_data["MRData"]
+    total_pitstops = int(race_data["total"])
+    
+    # If there are no pitstops, return the empty response
+    if total_pitstops == 0:
+        logger.info(f"No pitstops found for {self.season} round {self.round_num}")
+        return response_data
+    
+    # Add the first batch of pitstops
+    if (
+        "RaceTable" in race_data
+        and "Races" in race_data["RaceTable"]
+        and len(race_data["RaceTable"]["Races"]) > 0
+    ):
+        race = race_data["RaceTable"]["Races"][0]
+        if "PitStops" in race:
+            all_pitstops.extend(race["PitStops"])
+    
+    # Fetch remaining pitstops if needed
+    while len(all_pitstops) < total_pitstops:
+        offset += limit
+        url = f"{self.base_url}/{self.season}/{self.round_num}/pitstops.json?limit={limit}&offset={offset}"
+        response_data = self.make_request(url)
+        
+        if not response_data:
+            logger.error(
+                f"Failed to fetch pitstops at offset {offset} for {self.season} round {self.round_num}"
+            )
+            break
+        
+        race_data = response_data["MRData"]
+        if (
+            "RaceTable" in race_data
+            and "Races" in race_data["RaceTable"]
+            and len(race_data["RaceTable"]["Races"]) > 0
+        ):
+            race = race_data["RaceTable"]["Races"][0]
+            if "PitStops" in race:
+                all_pitstops.extend(race["PitStops"])
+    
+    # Reconstruct the complete response with all pitstops
+    if (
+        len(all_pitstops) > 0
+        and "RaceTable" in response_data["MRData"]
+        and "Races" in response_data["MRData"]["RaceTable"]
+        and len(response_data["MRData"]["RaceTable"]["Races"]) > 0
+    ):
+        response_data["MRData"]["RaceTable"]["Races"][0]["PitStops"] = all_pitstops
+    
+    logger.info(
+        f"Fetched {len(all_pitstops)} pitstops for {self.season} round {self.round_num}"
+    )
+    return response_data
+```
+
+From `pitstops.py:106-181`
+
+<Note>
+Pagination is critical for lap times and pitstops data, which can contain thousands of records per race.
+</Note>
+
+## File Operations
+
+### Directory Creation
+
+All scripts ensure directories exist before writing files:
+
+```python
+import os
+from pathlib import Path
+
+# Using os.makedirs
+os.makedirs(os.path.dirname(filepath), exist_ok=True)
+
+# Using pathlib
+race_folder.mkdir(parents=True, exist_ok=True)
+```
+
+### Saving JSON Data
+
+```python
+def save_json(self, data, filepath):
+    """Save data as JSON to the specified filepath"""
+    try:
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"Saved data to {filepath}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving data to {filepath}: {e}")
+        return False
+```
+
+From `sprint_results.py:112-122`
+
+### Simplified Save Method
+
+```python
+def save_json(self, data, filepath):
+    """Save JSON data to a file"""
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    
+    logger.info(f"Saved data to {filepath}")
+```
+
+From `team_points.py:106-112`
+
+## Race Name Formatting
+
+### Converting Race Names to Folder Names
+
+```python
+def get_race_folder_name(self, race):
+    """Convert race name to folder name format"""
+    return race["raceName"].lower().replace(" ", "-")
+```
+
+From `sprint_results.py:28-30`
+
+### Slugify Function
+
+```python
+def slugify(race_name):
+    """Convert to lowercase and replace spaces with hyphens"""
+    slug = race_name.lower().replace(" ", "-")
+    return slug
+```
+
+From `events.py:11-14`
+
+## Error Handling Patterns
+
+### Reading Local Files
+
+```python
+def get_race_info(self, season, round_num):
+    """Get race information for the specified season and round"""
+    events_file = self.base_dir / str(season) / "events.json"
+    
+    if not events_file.exists():
+        logger.warning(f"Events file not found for season {season}")
+        return None
+    
+    try:
+        with open(events_file, "r") as f:
+            data = json.load(f)
+            if (
+                "MRData" in data
+                and "RaceTable" in data["MRData"]
+                and "Races" in data["MRData"]["RaceTable"]
+            ):
+                races = data["MRData"]["RaceTable"]["Races"]
+                for race in races:
+                    if race["round"] == str(round_num):
+                        return race
+                logger.warning(f"Round {round_num} not found in season {season}")
+                return None
+            logger.warning(f"Invalid events file format for season {season}")
+            return None
+    except Exception as e:
+        logger.error(f"Error reading events file for season {season}: {e}")
+        return None
+```
+
+From `pitstops.py:71-99`
+
+### Validating API Responses
+
+```python
+def get_race_info(self, season, round_num):
+    """Get race information for a specific season and round"""
+    url = f"{self.base_url}/{season}/{round_num}.json"
+    data = self.make_request(url)
+    if (
+        data
+        and "MRData" in data
+        and "RaceTable" in data["MRData"]
+        and "Races" in data["MRData"]["RaceTable"]
+        and len(data["MRData"]["RaceTable"]["Races"]) > 0
+    ):
+        return data["MRData"]["RaceTable"]["Races"][0]
+    return None
+```
+
+From `quali_results.py:63-75`
+
+## Complete Fetcher Example
+
+Here's a complete example combining all patterns:
+
+```python
+import json
+import logging
+import os
+import time
+from pathlib import Path
+import requests
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("fetcher.log"), logging.StreamHandler()],
+)
+logger = logging.getLogger("data_fetcher")
+
+
+class DataFetcher:
+    def __init__(self, base_dir="."):
+        self.base_dir = Path(base_dir)
+        self.base_url = "https://api.jolpi.ca/ergast/f1"
+        self.burst_limit = 4
+        self.last_request_time = 0
+    
+    def make_request(self, url):
+        """Make a request to the API with rate limiting"""
+        current_time = time.time()
+        time_since_last_request = current_time - self.last_request_time
+        
+        if time_since_last_request < (1 / self.burst_limit):
+            sleep_time = (1 / self.burst_limit) - time_since_last_request
+            time.sleep(sleep_time)
+        
+        response = requests.get(url)
+        self.last_request_time = time.time()
+        
+        if response.status_code == 429:
+            logger.warning("Rate limit exceeded. Waiting 30 seconds.")
+            time.sleep(30)
+            return self.make_request(url)
+        
+        if response.status_code != 200:
+            logger.error(f"Error: {response.status_code}")
+            return None
+        
+        return response.json()
+    
+    def get_race_folder_name(self, race):
+        """Convert race name to folder name format"""
+        return race["raceName"].lower().replace(" ", "-")
+    
+    def save_json(self, data, filepath):
+        """Save data as JSON"""
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+        logger.info(f"Saved data to {filepath}")
+    
+    def fetch_round(self, season, round_num):
+        """Fetch data for a specific season and round"""
+        logger.info(f"Fetching season {season}, round {round_num}")
+        
+        # Get race info
+        url = f"{self.base_url}/{season}/{round_num}.json"
+        race_data = self.make_request(url)
+        
+        if not race_data:
+            logger.warning("No data found")
+            return
+        
+        races = race_data.get("MRData", {}).get("RaceTable", {}).get("Races", [])
+        if not races:
+            return
+        
+        race = races[0]
+        race_name = self.get_race_folder_name(race)
+        
+        # Create directories
+        race_dir = self.base_dir / str(season) / race_name
+        os.makedirs(race_dir, exist_ok=True)
+        
+        # Save data
+        filepath = race_dir / "data.json"
+        self.save_json(race_data, filepath)
+```
+
+## Best Practices
+
+1. **Always use rate limiting** - Never make requests without delay
+2. **Handle 429 responses** - Implement automatic retry with backoff
+3. **Validate responses** - Check for expected JSON structure
+4. **Use logging** - Track all requests and errors
+5. **Create directories** - Use `exist_ok=True` to avoid errors
+6. **Format consistently** - Convert race names to lowercase with hyphens
+7. **Handle exceptions** - Wrap file operations in try-except blocks
+8. **Use pagination** - For large datasets like lap times and pitstops
+9. **Track request counts** - Monitor hourly limits for long operations
+10. **Return meaningful values** - Return `None` on errors, data on success
