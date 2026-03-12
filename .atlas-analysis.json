@@ -1,0 +1,100 @@
+{
+  "projectType": "data-platform",
+  "projectName": "F1 Stats Archive",
+  "projectDescription": "A comprehensive Formula 1 historical statistics archive with automated data collection from the Ergast API covering seasons from 1950 to present.",
+  "theme": "aspen",
+  "primaryColor": "#E10600",
+  "lightColor": "#FF1E00",
+  "darkColor": "#C00000",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Data Collection",
+            "pages": [
+              "data-collection/overview",
+              "data-collection/events",
+              "data-collection/race-results",
+              "data-collection/qualifying",
+              "data-collection/standings",
+              "data-collection/lap-times",
+              "data-collection/pitstops",
+              "data-collection/sprint-races"
+            ]
+          },
+          {
+            "group": "Data Structure",
+            "pages": [
+              "data-structure/overview",
+              "data-structure/directory-layout",
+              "data-structure/json-schemas"
+            ]
+          },
+          {
+            "group": "Usage Guide",
+            "pages": [
+              "usage/accessing-data",
+              "usage/automation",
+              "usage/rate-limiting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Scripts",
+            "pages": [
+              "api/events",
+              "api/results",
+              "api/quali-results",
+              "api/driver-points",
+              "api/team-points",
+              "api/laptimes",
+              "api/pitstops",
+              "api/sprint-results"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/rate-limiting",
+              "api/data-fetching"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Automated F1 data collection from Ergast API",
+    "Historical data from 1950 to present",
+    "Comprehensive race statistics including results, qualifying, standings, lap times, and pitstops",
+    "Rate-limited API requests with retry logic",
+    "Organized JSON data structure by season and race",
+    "GitHub Actions automation for scheduled updates",
+    "Sprint race support for modern F1 seasons",
+    "Constructor and driver championship standings tracking"
+  ],
+  "publicApiSurface": [
+    "events.py - Fetch race calendar and event information",
+    "results.py - Fetch race results via RaceResultsFetcher",
+    "quali_results.py - Fetch qualifying results via QualifyingResultsFetcher",
+    "driver_points.py - Fetch driver championship standings",
+    "team_points.py - Fetch constructor championship standings via ConstructorStandingsFetcher",
+    "laptimes.py - Fetch lap times with pagination",
+    "pitstops.py - Fetch pitstop data via PitstopsFetcher",
+    "sprint_results.py - Fetch sprint race results via SprintResultsFetcher"
+  ]
+}
